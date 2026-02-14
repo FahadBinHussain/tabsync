@@ -90,12 +90,24 @@ pnpm build
 
 ## Usage
 
-### First Run
+### First Run Setup
 
+**Step 1: Enter Firebase Configuration**
 1. Click the extension icon
 2. You'll see a configuration form
 3. Paste your Firebase config JSON
 4. Click "Save Configuration"
+
+**Step 2: Select or Create Device**
+- **If you have existing devices:**
+  - You'll see a list of all devices currently synced
+  - Click on any device to sync with it (merges your current tabs with that device)
+  - Or click "Create New Device" to add this as a new device
+  
+- **If this is your first device:**
+  - Click "Create New Device"
+  - Enter a descriptive name (e.g., "Work Laptop", "Home Desktop")
+  - Click "Create Device"
 
 ### Normal Usage
 
@@ -114,12 +126,14 @@ TabSync implements a command pattern for remote operations:
 - Device A's background script listens to its commands subcollection
 - When Device A receives the command, it executes the action (closes the tab) and deletes the command document
 
-### Reset Configuration
+### Managing Configuration
 
-If you need to change your Firebase config:
+If you need to change your Firebase config or switch devices:
 1. Open the extension popup
 2. Click "Reset Config"
-3. Paste the new configuration
+3. Confirm the reset
+4. You'll be taken back to the configuration screen
+5. Follow the first-run setup again
 
 ## Architecture
 

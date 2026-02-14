@@ -98,8 +98,8 @@ export function DeviceList({ onResetConfig }: DeviceListProps) {
   }, []);
 
   const handleResetConfig = async () => {
-    if (confirm('Are you sure you want to reset the Firebase configuration? This will require you to re-enter your config.')) {
-      await browser.storage.local.remove('firebaseConfig');
+    if (confirm('Are you sure you want to reset the Firebase configuration? This will require you to re-enter your config and select a device.')) {
+      await browser.storage.local.remove(['firebaseConfig', 'deviceId', 'deviceName']);
       resetFirebase();
       onResetConfig();
     }

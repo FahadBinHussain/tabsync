@@ -1,7 +1,7 @@
 import browser from 'webextension-polyfill';
 import { doc, setDoc, serverTimestamp, collection, onSnapshot, deleteDoc, query } from 'firebase/firestore';
 import { initFirebase } from '../lib/firebase';
-import { getDeviceId, getDeviceName, debounce } from '../lib/utils';
+import { debounce } from '../lib/utils';
 
 let isInitialized = false;
 let db: any = null;
@@ -48,9 +48,15 @@ async function syncTabs() {
   }
 
   try {
+    // Check if device is configured
+    const { deviceId, deviceName } = await browser.storage.local.get(['deviceId', 'deviceName']);
+    
+    if (!deviceId) {
+      console.log('[TabSync] No device selected yet, skipping sync');
+      return;
+    }
+
     const tabs = await browser.tabs.query({});
-    const deviceId = await getDeviceId();
-    const deviceName = await getDeviceName();
 
     const tabsData = tabs.map(tab => ({
       id: tab.id,
@@ -66,7 +72,7 @@ async function syncTabs() {
     // Write to Firestore: devices/{deviceId}
     const deviceRef = doc(db, 'devices', deviceId);
     await setDoc(deviceRef, {
-      deviceName,
+      deviceName: deviceName || 'Unknown Device',
       lastUpdated: serverTimestamp(),
       tabs: tabsData,
       tabCount: tabsData.length,
@@ -122,7 +128,13 @@ async function startCommandListener() {
   }
 
   try {
-    const deviceId = await getDeviceId();
+    const { deviceId } = await browser.storage.local.get('deviceId');
+    
+    if (!deviceId) {
+      console.log('[TabSync] No device selected, skipping command listener');
+      return;
+    }
+
     const commandsRef = collection(db, 'devices', deviceId, 'commands');
     const commandsQuery = query(commandsRef);
 
@@ -157,7 +169,12 @@ async function startCommandListener() {
  */
 async function executeCommand(command: any, commandId: string) {
   try {
-    const deviceId = await getDeviceId();
+    const { deviceId } = await browser.storage.local.get('deviceId');
+    
+    if (!deviceId) {
+      console.log('[TabSync] No device selected, cannot execute command');
+      return;
+    }
 
     switch (command.action) {
       case 'closeTab':
@@ -199,18 +216,29 @@ async function executeCommand(command: any, commandId: string) {
  * Listen for storage changes (in case config is added)
  */
 browser.storage.onChanged.addListener((changes: any, areaName: string) => {
-  if (areaName === 'local' && changes.firebaseConfig) {
-    console.log('[TabSync] Firebase config changed, reinitializing...');
-    
-    // Cleanup old listeners
-    if (commandsUnsubscribe) {
-      commandsUnsubscribe();
-      commandsUnsubscribe = null;
+  if (areaName === 'local') {
+    if (changes.firebaseConfig) {
+      console.log('[TabSync] Firebase config changed, reinitializing...');
+      
+      // Cleanup old listeners
+      if (commandsUnsubscribe) {
+        commandsUnsubscribe();
+        commandsUnsubscribe = null;
+      }
+      
+      isInitialized = false;
+      db = null;
+      initialize();
     }
     
-    isInitialized = false;
-    db = null;
-    initialize();
+    if (changes.deviceId) {
+      console.log('[TabSync] Device changed, triggering sync...');
+      // Restart command listener with new device
+      if (isInitialized) {
+        startCommandListener();
+        syncTabs();
+      }
+    }
   }
 });
 
