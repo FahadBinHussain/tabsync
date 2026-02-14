@@ -46,29 +46,47 @@ Place the following icon files in `src/assets/`:
 
 ### 4. Build the Extension
 
-For Chrome/Edge:
+**For Chrome/Edge (with packaging):**
 ```bash
-pnpm build
+pnpm build:chrome
 ```
+This creates a ZIP file in the `build/` folder.
 
-For Firefox:
+**For Firefox (with packaging):**
 ```bash
-set TARGET=firefox
+pnpm build:firefox
+```
+This creates an XPI file in the `build/` folder.
+
+**Development build (no packaging):**
+```bash
 pnpm build
 ```
 
 ### 5. Load the Extension
 
-**Chrome/Edge:**
+**Chrome/Edge (Development):**
 1. Go to `chrome://extensions/`
 2. Enable "Developer mode"
 3. Click "Load unpacked"
 4. Select the `dist` folder
 
-**Firefox:**
+**Chrome/Edge (Packaged CRX):**
+1. Go to `chrome://extensions/`
+2. Enable "Developer mode"
+3. Click "Pack extension"
+4. Select the `dist` folder as the extension root
+5. Chrome will generate a `.crx` file and a `.pem` key
+6. Drag the `.crx` file into the extensions page
+
+**Firefox (Development):**
 1. Go to `about:debugging#/runtime/this-firefox`
 2. Click "Load Temporary Add-on"
 3. Select any file in the `dist` folder
+
+**Firefox (Packaged XPI):**
+1. The XPI file from `build/` can be installed temporarily
+2. For permanent installation, sign it at [addons.mozilla.org](https://addons.mozilla.org/developers/)
 
 ## Usage
 
@@ -86,6 +104,15 @@ pnpm build
 - Click on a device to expand and see its tabs
 - Click any tab to open it
 - Click "Open All" to open all tabs from another device
+- **Hover over a tab** from another device to see the close button (×) - click to close that tab remotely!
+
+### Remote Tab Control (Command Pattern)
+
+TabSync implements a command pattern for remote operations:
+- When you click the "×" button on a tab from Device A (while viewing from Device B), Device B writes a command to Firestore
+- The command is stored in: `devices/DeviceA/commands/{commandId}`
+- Device A's background script listens to its commands subcollection
+- When Device A receives the command, it executes the action (closes the tab) and deletes the command document
 
 ### Reset Configuration
 
@@ -102,6 +129,8 @@ If you need to change your Firebase config:
 - Watches for tab changes (create, update, remove, move)
 - Debounces writes to Firestore (2 seconds)
 - Writes to: `devices/{deviceId}`
+- Listens to `devices/{deviceId}/commands` for remote commands
+- Executes commands (close tab, open tab) and marks them as done
 
 ### Popup (`src/popup/`)
 
@@ -129,6 +158,13 @@ devices/
         pinned: boolean
       }
     ]
+    commands/ (subcollection)
+      {commandId}/
+        action: "closeTab" | "openTab"
+        tabId: number (for closeTab)
+        url: string (for openTab)
+        createdAt: timestamp
+        fromDevice: string
 ```
 
 ## Development
@@ -140,8 +176,18 @@ pnpm install
 # Development mode (hot reload)
 pnpm dev
 
-# Build for production
+# Build for production (Chrome/Edge)
 pnpm build
+
+# Build for production (Firefox)
+set TARGET=firefox
+pnpm build
+
+# Build and package for Chrome
+pnpm build:chrome
+
+# Build and package for Firefox
+pnpm build:firefox
 ```
 
 ## Firestore Security Rules
@@ -154,6 +200,10 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /devices/{deviceId} {
       allow read, write: if true;
+      
+      match /commands/{commandId} {
+        allow read, write: if true;
+      }
     }
   }
 }

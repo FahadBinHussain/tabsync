@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import browser from 'webextension-polyfill';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { initFirebase, resetFirebase } from '../lib/firebase';
 import { getDeviceId } from '../lib/utils';
 
@@ -33,6 +33,7 @@ export function DeviceList({ onResetConfig }: DeviceListProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedDevices, setExpandedDevices] = useState<Set<string>>(new Set());
+  const [db, setDb] = useState<any>(null);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -48,7 +49,8 @@ export function DeviceList({ onResetConfig }: DeviceListProps) {
         }
 
         // Initialize Firebase
-        const { db } = initFirebase(firebaseConfig);
+        const { db: firestoreDb } = initFirebase(firebaseConfig);
+        setDb(firestoreDb);
 
         // Get current device ID
         const deviceId = await getDeviceId();
@@ -56,7 +58,7 @@ export function DeviceList({ onResetConfig }: DeviceListProps) {
 
         // Listen to devices collection
         const devicesQuery = query(
-          collection(db, 'devices'),
+          collection(firestoreDb, 'devices'),
           orderBy('lastUpdated', 'desc')
         );
 
@@ -123,6 +125,25 @@ export function DeviceList({ onResetConfig }: DeviceListProps) {
         browser.tabs.create({ url: tab.url });
       }
     });
+  };
+
+  const closeRemoteTab = async (deviceId: string, tabId: number) => {
+    if (!db) return;
+    
+    try {
+      // Create a command document in the target device's commands subcollection
+      const commandRef = doc(collection(db, 'devices', deviceId, 'commands'));
+      await setDoc(commandRef, {
+        action: 'closeTab',
+        tabId: tabId,
+        createdAt: serverTimestamp(),
+        fromDevice: currentDeviceId,
+      });
+      
+      console.log(`[TabSync] Sent close command for tab ${tabId} to device ${deviceId}`);
+    } catch (error) {
+      console.error('[TabSync] Failed to send close command:', error);
+    }
   };
 
   const formatTimestamp = (timestamp: any): string => {
@@ -270,28 +291,56 @@ export function DeviceList({ onResetConfig }: DeviceListProps) {
                           {device.tabs.map((tab, index) => (
                             <div
                               key={index}
-                              className="flex items-center gap-3 p-2 hover:bg-gray-800 rounded cursor-pointer transition-colors"
-                              onClick={() => !isCurrent && openTab(tab.url)}
+                              className="flex items-center gap-3 p-2 hover:bg-gray-800 rounded transition-colors group"
                             >
                               {tab.favIconUrl ? (
                                 <img
                                   src={tab.favIconUrl}
                                   alt=""
-                                  className="w-4 h-4"
+                                  className="w-4 h-4 flex-shrink-0"
                                   onError={(e) => {
                                     e.currentTarget.style.display = 'none';
                                   }}
                                 />
                               ) : (
-                                <div className="w-4 h-4 bg-gray-600 rounded" />
+                                <div className="w-4 h-4 bg-gray-600 rounded flex-shrink-0" />
                               )}
-                              <div className="flex-1 min-w-0">
+                              <div 
+                                className="flex-1 min-w-0 cursor-pointer"
+                                onClick={() => !isCurrent && openTab(tab.url)}
+                              >
                                 <p className="text-sm truncate">{tab.title}</p>
                                 <p className="text-xs text-gray-500 truncate">{tab.url}</p>
                               </div>
-                              {tab.pinned && (
-                                <span className="text-xs text-gray-500">📌</span>
-                              )}
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {tab.pinned && (
+                                  <span className="text-xs text-gray-500">📌</span>
+                                )}
+                                {!isCurrent && tab.id && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      closeRemoteTab(device.id, tab.id!);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-600 rounded transition-all"
+                                    title="Close this tab"
+                                  >
+                                    <svg
+                                      className="w-4 h-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M6 18L18 6M6 6l12 12"
+                                      />
+                                    </svg>
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>

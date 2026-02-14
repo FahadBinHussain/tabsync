@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:chrome": "pnpm build && pnpm pack:chrome",
+    "build:firefox": "set TARGET=firefox && pnpm build && pnpm pack:firefox",
+    "pack:chrome": "node scripts/pack-chrome.js",
+    "pack:firefox": "node scripts/pack-firefox.js",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -21,7 +25,9 @@
     "@types/react-dom": "^18.2.18",
     "@types/webextension-polyfill": "^0.10.7",
     "@vitejs/plugin-react": "^4.2.1",
+    "archiver": "^7.0.1",
     "autoprefixer": "^10.4.17",
+    "crx": "^5.0.1",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.3.3",

@@ -28,3 +28,8 @@ build
 *.crx
 *.xpi
 *.zip
+
+# Extension keys (keep private!)
+key.pem
+*.pem
+key.pem
