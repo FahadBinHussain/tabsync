@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import browser from 'webextension-polyfill';
 import { collection, query, orderBy, getDocs } from 'firebase/firestore';
 import { initFirebase } from '../lib/firebase';
+import { loadFirebaseConfig } from '../lib/storage';
 
 interface Device {
   id: string;
@@ -28,7 +29,7 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
 
   async function loadExistingDevices() {
     try {
-      const { firebaseConfig } = await browser.storage.local.get('firebaseConfig');
+      const firebaseConfig = await loadFirebaseConfig();
       
       if (!firebaseConfig) {
         setError('No Firebase config found');
@@ -64,10 +65,14 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
     }
   }
 
-  async function handleSelectExistingDevice(deviceId: string) {
+  async function handleSelectExistingDevice(device: Device) {
     try {
       setSaving(true);
-      await browser.storage.local.set({ deviceId });
+      // Save BOTH deviceId AND deviceName so the background sync uses the correct name
+      await browser.storage.local.set({
+        deviceId: device.id,
+        deviceName: device.deviceName,
+      });
       onDeviceSelected();
     } catch (err: any) {
       setError('Failed to select device: ' + err.message);
@@ -94,7 +99,7 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
       });
 
       // Create initial Firestore document for this device
-      const { firebaseConfig } = await browser.storage.local.get('firebaseConfig');
+      const firebaseConfig = await loadFirebaseConfig();
       if (firebaseConfig) {
         const { db } = initFirebase(firebaseConfig);
         const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
@@ -239,7 +244,7 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
               {devices.map((device) => (
                 <button
                   key={device.id}
-                  onClick={() => handleSelectExistingDevice(device.id)}
+                  onClick={() => handleSelectExistingDevice(device)}
                   disabled={saving}
                   className="w-full text-left p-4 bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-blue-500 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >

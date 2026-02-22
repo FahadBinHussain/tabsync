@@ -3,6 +3,7 @@ import browser from 'webextension-polyfill';
 import { ConfigForm } from '../components/ConfigForm';
 import { DeviceSelection } from '../components/DeviceSelection';
 import { DeviceList } from '../components/DeviceList';
+import { loadFirebaseConfig } from '../lib/storage';
 
 type AppState = 'loading' | 'needsConfig' | 'needsDevice' | 'ready';
 
@@ -14,7 +15,8 @@ export function App() {
   }, []);
 
   async function checkSetupState() {
-    const { firebaseConfig, deviceId } = await browser.storage.local.get(['firebaseConfig', 'deviceId']);
+    const firebaseConfig = await loadFirebaseConfig();
+    const { deviceId } = await browser.storage.local.get('deviceId');
     
     if (!firebaseConfig) {
       setAppState('needsConfig');
@@ -37,6 +39,12 @@ export function App() {
     setAppState('needsConfig');
   }
 
+  async function handleReselectDevice() {
+    // Clear only device info, keep Firebase config intact
+    await browser.storage.local.remove(['deviceId', 'deviceName']);
+    setAppState('needsDevice');
+  }
+
   if (appState === 'loading') {
     return (
       <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
@@ -53,5 +61,5 @@ export function App() {
     return <DeviceSelection onDeviceSelected={handleDeviceSelected} />;
   }
 
-  return <DeviceList onResetConfig={handleResetConfig} />;
+  return <DeviceList onResetConfig={handleResetConfig} onReselectDevice={handleReselectDevice} />;
 }

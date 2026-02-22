@@ -2,6 +2,7 @@ import browser from 'webextension-polyfill';
 import { doc, setDoc, serverTimestamp, collection, onSnapshot, deleteDoc, query } from 'firebase/firestore';
 import { initFirebase } from '../lib/firebase';
 import { debounce } from '../lib/utils';
+import { loadFirebaseConfig } from '../lib/storage';
 
 let isInitialized = false;
 let db: any = null;
@@ -14,7 +15,8 @@ async function initialize() {
   if (isInitialized) return;
 
   try {
-    const { firebaseConfig } = await browser.storage.local.get('firebaseConfig');
+    // loadFirebaseConfig checks storage.local first, falls back to storage.sync
+    const firebaseConfig = await loadFirebaseConfig();
     
     if (!firebaseConfig) {
       console.log('[TabSync] No Firebase config found. Waiting for user to provide config.');

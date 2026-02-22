@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import browser from 'webextension-polyfill';
 import { validateFirebaseConfig } from '../lib/utils';
+import { saveFirebaseConfig } from '../lib/storage';
 
 interface ConfigFormProps {
   onConfigSaved: () => void;
@@ -107,8 +107,8 @@ export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
         throw new Error(`Missing required fields: ${missing.join(', ')}`);
       }
 
-      // Save to storage
-      await browser.storage.local.set({ firebaseConfig: config });
+      // Save to both storage.local and storage.sync (survives reinstalls)
+      await saveFirebaseConfig(config);
 
       // Notify parent
       onConfigSaved();
