@@ -1,4 +1,4 @@
-name: Build TS Extension (PNPM)
+name: Build TS Extension & Release (PNPM)
 
 on:
   push:
@@ -14,47 +14,51 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1. Setup PNPM (This is the magic part)
+      # 1. Setup PNPM correctly
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9 # or your preferred version
+          version: 9
 
+      # 2. Setup Node with PNPM caching
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm' # Auto-caches your dependencies for speed!
+          cache: 'pnpm'
 
-      # 2. Install Dependencies & Build using PNPM
-      - name: Install & Build
+      # 3. Install & Build (TypeScript -> JS)
+      - name: Install Dependencies & Build
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
-        # Ensure your package.json has "scripts": {"build": "..."}
+        # IMPORTANT: Ensure your package.json "build" script outputs to a folder named 'dist'
 
-      # 3. Install CRX Utility (Global tools are fine with npm)
+      # 4. Install Utility to pack Chrome Extensions
       - name: Install CRX Utility
         run: npm install -g crx json
 
+      # 5. Restore your Private Key from Secrets
       - name: Restore Private Key
         run: echo "${{ secrets.PEM_KEY }}" > private.pem
 
-      # 4. Pack the CRX (Targeting 'dist' folder)
+      # 6. Pack the 'dist' folder into a .crx file
       - name: Pack CRX
         run: |
-          mkdir -p dist
+          # We pack the 'dist' folder because that's where the compiled manifest.json and JS files are
           crx pack dist -o dist/extension.crx -p private.pem
 
-      # 5. Generate update.xml
+      # 7. Generate update.xml automatically
       - name: Generate update.xml
         run: |
-          # Use jq to read version from the BUILT manifest
+          # Read the version from the COMPILED manifest inside dist/
           VERSION=$(cat dist/manifest.json | jq -r .version)
           APP_ID="${{ secrets.APP_ID }}"
+          
+          # This URL hardcodes to the 'latest' tag so it never changes in your Registry
           CRX_URL="https://github.com/${{ github.repository }}/releases/download/latest/extension.crx"
           
-          echo "Building XML for Version: $VERSION"
+          echo "Generating XML for Version: $VERSION"
 
           cat <<EOF > dist/update.xml
           <?xml version='1.0' encoding='UTF-8'?>
@@ -65,13 +69,14 @@ jobs:
           </gupdate>
           EOF
 
-      # 6. Release to GitHub
+      # 8. Upload to GitHub Releases (Fixed Action)
       - name: Update Latest Release
-        uses: pyTooling/Actions/releaser@r0
+        uses: ncipollo/release-action@v1
         with:
+          artifacts: "dist/extension.crx,dist/update.xml"
           tag: latest
-          rm_existing_tag: true
-          files: |
-            dist/extension.crx
-            dist/update.xml
+          allowUpdates: true        # Updates the existing 'latest' release
+          removeArtifacts: true     # Deletes old files so they don't pile up
+          replacesArtifacts: true
+          makeLatest: true          # Marks this as the official latest release
           token: ${{ secrets.GITHUB_TOKEN }}
