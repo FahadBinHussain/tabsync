@@ -181,9 +181,45 @@ function startBookmarkWatcher() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const COMMAND_POLL_MS = 3000;
+let pollInProgress = false;
+
+/**
+ * Claim a command ID atomically via browser.storage.local so that
+ * even if multiple background instances race (e.g. after extension reload),
+ * each command is only executed once.
+ * Returns true if this call successfully claimed the ID (first to claim it).
+ */
+async function claimCommand(cmdId: string): Promise<boolean> {
+  const key = `claimed_cmd_${cmdId}`;
+  const existing = await browser.storage.local.get(key);
+  if (existing[key]) return false; // already claimed by another instance
+  await browser.storage.local.set({ [key]: Date.now() });
+  // Double-check: read back to detect a race between two simultaneous claims
+  const verify = await browser.storage.local.get(key);
+  return !!verify[key];
+}
+
+/**
+ * Prune claimed command IDs older than 5 minutes from storage to avoid buildup.
+ */
+async function pruneClaimedCommands(): Promise<void> {
+  try {
+    const all = await browser.storage.local.get(null);
+    const now = Date.now();
+    const toRemove: string[] = [];
+    for (const [k, v] of Object.entries(all)) {
+      if (k.startsWith('claimed_cmd_') && typeof v === 'number' && now - v > 5 * 60 * 1000) {
+        toRemove.push(k);
+      }
+    }
+    if (toRemove.length > 0) await browser.storage.local.remove(toRemove);
+  } catch { /* non-critical */ }
+}
 
 async function pollCommands() {
   if (!isInitialized || !restCfg) return;
+  if (pollInProgress) return;
+  pollInProgress = true;
 
   try {
     const { deviceId } = await browser.storage.local.get('deviceId');
@@ -191,10 +227,20 @@ async function pollCommands() {
 
     const commands = await restListDocs(restCfg, `devices/${deviceId}/commands`);
     for (const cmd of commands) {
+      const claimed = await claimCommand(cmd.id);
+      if (!claimed) {
+        console.log(`[TabSync] Command ${cmd.id} already claimed, skipping`);
+        continue;
+      }
       await executeCommand(cmd, cmd.id);
     }
+
+    // Occasionally prune old claimed command keys
+    if (Math.random() < 0.1) pruneClaimedCommands();
   } catch (error) {
     console.error('[TabSync] Command poll error:', error);
+  } finally {
+    pollInProgress = false;
   }
 }
 
@@ -216,6 +262,11 @@ async function executeCommand(command: any, commandId: string) {
   try {
     const { deviceId } = await browser.storage.local.get('deviceId');
     if (!deviceId || !restCfg) return;
+
+    // Delete the command FIRST (before executing) to prevent double-execution
+    // if the poll fires again before we finish processing this command.
+    await restDeleteDoc(restCfg, `devices/${deviceId}/commands/${commandId}`);
+    console.log(`[TabSync] Claimed command ${commandId}`);
 
     switch (command.action) {
       case 'closeTab':
@@ -259,7 +310,6 @@ async function executeCommand(command: any, commandId: string) {
         console.warn('[TabSync] Unknown command action:', command.action);
     }
 
-    await restDeleteDoc(restCfg, `devices/${deviceId}/commands/${commandId}`);
     console.log(`[TabSync] Command ${commandId} done`);
   } catch (error) {
     console.error('[TabSync] Failed to execute command:', error);
