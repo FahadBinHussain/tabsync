@@ -1,4 +1,4 @@
-name: Build to Release
+name: Build TS Extension & Release
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  build-release:
+  build-and-release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -19,26 +19,37 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install CRX
+      # 1. Install Dependencies & Build
+      # This runs your 'manifest.ts' -> 'manifest.json' logic
+      - name: Install & Build
+        run: |
+          npm ci
+          npm run build 
+        # ^^^ MAKE SURE your package.json has a "build" script that outputs to a 'dist' folder!
+
+      - name: Install CRX Utility
         run: npm install -g crx json
 
       - name: Restore Private Key
         run: echo "${{ secrets.PEM_KEY }}" > private.pem
 
-      # 1. Pack the CRX
+      # 2. Pack the CRX
+      # IMPORTANT: We pack the 'dist' folder now, not 'src'
       - name: Pack CRX
         run: |
-          mkdir -p dist
-          crx pack src -o dist/extension.crx -p private.pem
+          crx pack dist -o dist/extension.crx -p private.pem
 
-      # 2. Generate update.xml pointing to the CONSTANT Release URL
+      # 3. Generate update.xml
+      # We read the version from the COMPILED manifest.json in /dist
       - name: Generate update.xml
         run: |
-          VERSION=$(cat src/manifest.json | jq -r .version)
+          VERSION=$(cat dist/manifest.json | jq -r .version)
           APP_ID="${{ secrets.APP_ID }}"
-          # The trick: We hardcode the URL to the 'latest' tag
+          # Direct link to the 'latest' release asset
           CRX_URL="https://github.com/${{ github.repository }}/releases/download/latest/extension.crx"
           
+          echo "Building XML for Version: $VERSION"
+
           cat <<EOF > dist/update.xml
           <?xml version='1.0' encoding='UTF-8'?>
           <gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
@@ -48,7 +59,8 @@ jobs:
           </gupdate>
           EOF
 
-      # 3. Update the 'latest' tag (Delete old, Create new)
+      # 4. Upload to GitHub Releases (Floating 'latest' tag)
+      # This overwrites the old release so the URL stays the same
       - name: Update Latest Release
         uses: pyTooling/Actions/releaser@r0
         with:
