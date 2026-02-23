@@ -1,16 +1,19 @@
 {
   "name": "tabsync",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Personal browser extension to sync open tabs across devices",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:chrome": "pnpm build && pnpm pack:chrome",
-    "build:firefox": "set TARGET=firefox && pnpm build && pnpm pack:firefox",
-    "pack:chrome": "node scripts/pack-chrome.js",
-    "pack:firefox": "node scripts/pack-firefox.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pack:all": "node scripts/pack.js",
+    "pack:chrome": "node scripts/pack.js chrome",
+    "pack:firefox": "node scripts/pack.js firefox",
+    "sign:firefox": "node scripts/pack.js firefox",
+    "bump": "node scripts/bump.js",
+    "bump:minor": "node scripts/bump.js minor",
+    "bump:major": "node scripts/bump.js major"
   },
   "dependencies": {
     "firebase": "^10.8.0",
@@ -31,6 +34,7 @@
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.3.3",
-    "vite": "^5.0.11"
+    "vite": "^5.0.11",
+    "web-ext": "^9.3.0"
   }
 }

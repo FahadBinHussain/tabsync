@@ -5,11 +5,10 @@ import manifest from './src/manifest.ts';
 
 export default defineConfig({
   plugins: [react(), crx({ manifest })],
+
   server: {
     port: 5173,
     strictPort: true,
-    hmr: {
-      port: 5173,
-    },
+    hmr: { port: 5173 },
   },
 });

@@ -1,8 +1,8 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+// This file is superseded by scripts/pack.js (unified Chrome + Firefox packer).
+// Run: pnpm pack:all
 import { execSync } from 'child_process';
-import archiver from 'archiver';
+execSync('node scripts/pack.js', { stdio: 'inherit' });
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
