@@ -1,4 +1,4 @@
-name: Build TS Extension & Release
+name: Build TS Extension (PNPM)
 
 on:
   push:
@@ -14,38 +14,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 1. Setup PNPM (This is the magic part)
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9 # or your preferred version
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm' # Auto-caches your dependencies for speed!
 
-      # 1. Install Dependencies & Build
-      # This runs your 'manifest.ts' -> 'manifest.json' logic
+      # 2. Install Dependencies & Build using PNPM
       - name: Install & Build
         run: |
-          npm ci
-          npm run build 
-        # ^^^ MAKE SURE your package.json has a "build" script that outputs to a 'dist' folder!
+          pnpm install --frozen-lockfile
+          pnpm run build
+        # Ensure your package.json has "scripts": {"build": "..."}
 
+      # 3. Install CRX Utility (Global tools are fine with npm)
       - name: Install CRX Utility
         run: npm install -g crx json
 
       - name: Restore Private Key
         run: echo "${{ secrets.PEM_KEY }}" > private.pem
 
-      # 2. Pack the CRX
-      # IMPORTANT: We pack the 'dist' folder now, not 'src'
+      # 4. Pack the CRX (Targeting 'dist' folder)
       - name: Pack CRX
         run: |
+          mkdir -p dist
           crx pack dist -o dist/extension.crx -p private.pem
 
-      # 3. Generate update.xml
-      # We read the version from the COMPILED manifest.json in /dist
+      # 5. Generate update.xml
       - name: Generate update.xml
         run: |
+          # Use jq to read version from the BUILT manifest
           VERSION=$(cat dist/manifest.json | jq -r .version)
           APP_ID="${{ secrets.APP_ID }}"
-          # Direct link to the 'latest' release asset
           CRX_URL="https://github.com/${{ github.repository }}/releases/download/latest/extension.crx"
           
           echo "Building XML for Version: $VERSION"
@@ -59,8 +65,7 @@ jobs:
           </gupdate>
           EOF
 
-      # 4. Upload to GitHub Releases (Floating 'latest' tag)
-      # This overwrites the old release so the URL stays the same
+      # 6. Release to GitHub
       - name: Update Latest Release
         uses: pyTooling/Actions/releaser@r0
         with:
