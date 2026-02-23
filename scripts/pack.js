@@ -263,29 +263,21 @@ async function buildFirefox() {
       ` --api-secret "${amoSecret}"` +
       ` --channel unlisted`,
     );
-    const signed = signResult.ok;
 
-    if (!signed) {
-      const errMsg = signResult.message;
-      if (errMsg.includes('already exists') || errMsg.includes('Conflict') || errMsg.includes('Version 1')) {
-        warn('AMO: version already signed — reusing previously downloaded XPI.');
-        warn('To get a new signature, bump the version in package.json and re-run.');
-      } else {
-        warn(`web-ext sign failed: ${errMsg}`);
-        warn('Falling back to unsigned XPI. Check AMO credentials or try again.');
-      }
-    }
-
-    // Find the signed XPI in artifacts dir (could be from this run or a prior run)
-    const signedFile = fs.readdirSync(artifactsDir).find(f => f.endsWith('.xpi'));
-    if (signedFile) {
-      fs.copyFileSync(path.join(artifactsDir, signedFile), xpiOut);
-      ok(`Signed XPI: build/${path.basename(xpiOut)}${signed ? '' : '  (reused from prior sign)'}`);
-      ok('Mozilla-signed — installs in Tor Browser with no warning!');
-    } else {
-      warn('No signed XPI found in amo-artifacts/ — falling back to unsigned.');
+    if (!signResult.ok) {
+      warn(`web-ext sign failed: ${signResult.message}`);
+      warn('Falling back to unsigned XPI. Check AMO credentials or try again.');
       fs.copyFileSync(zipOut, xpiOut);
-      warn('Load temporarily via about:debugging, or bump version + re-run to get fresh signed XPI.');
+    } else {
+      const signedFile = fs.readdirSync(artifactsDir).find(f => f.endsWith('.xpi'));
+      if (signedFile) {
+        fs.copyFileSync(path.join(artifactsDir, signedFile), xpiOut);
+        ok(`Signed XPI: build/${path.basename(xpiOut)}`);
+        ok('Mozilla-signed — installs in Tor Browser with no warning!');
+      } else {
+        warn('No signed XPI found in amo-artifacts/ — falling back to unsigned.');
+        fs.copyFileSync(zipOut, xpiOut);
+      }
     }
   } else {
     info(`Creating XPI (unsigned) → ${path.basename(xpiOut)}`);

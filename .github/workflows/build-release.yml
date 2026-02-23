@@ -15,6 +15,8 @@ jobs:
       # ── Checkout ──────────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       # ── PNPM + Node ───────────────────────────────────────────────────────
       - name: Install pnpm
@@ -32,24 +34,33 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # ── Chrome private key ────────────────────────────────────────────────
-      # pack.js looks for key.pem in the project root to produce a .crx file.
-      # Store your PEM in the repo secret PEM_KEY (base64-encoded or raw).
       - name: Restore Chrome private key
         run: echo "${{ secrets.PEM_KEY }}" > key.pem
 
-      # ── Build & package everything ────────────────────────────────────────
-      # pack.js builds Chrome (dist/) + Firefox (dist-firefox/), packages ZIPs,
-      # signs the CRX with key.pem, and Mozilla-signs the XPI if AMO creds exist.
-      - name: Build + Package Chrome & Firefox
+      # ── Bump version + build + sign everything ────────────────────────────
+      # pnpm bump increments patch, then runs pack:all which:
+      #   - builds Chrome (dist/) + Firefox (dist-firefox/)
+      #   - packages ZIP + CRX for Chrome
+      #   - packages ZIP + Mozilla-signed XPI for Firefox
+      - name: Bump version & build all
         env:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
-        run: pnpm pack:all
+        run: pnpm bump
 
-      # ── Read version for tagging ──────────────────────────────────────────
+      # ── Read bumped version ───────────────────────────────────────────────
       - name: Read version
         id: ver
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # ── Commit the version bump back to main ─────────────────────────────
+      - name: Commit version bump
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git diff --cached --quiet || git commit -m "chore: bump version to ${{ steps.ver.outputs.version }} [skip ci]"
+          git push
 
       # ── Generate update.xml for Chrome auto-update ────────────────────────
       - name: Generate update.xml
