@@ -1,6 +1,6 @@
 {
   "name": "tabsync",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Personal browser extension to sync open tabs across devices",
   "type": "module",
   "scripts": {
