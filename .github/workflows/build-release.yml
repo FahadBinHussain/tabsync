@@ -1,0 +1,60 @@
+name: Build to Release
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install CRX
+        run: npm install -g crx json
+
+      - name: Restore Private Key
+        run: echo "${{ secrets.PEM_KEY }}" > private.pem
+
+      # 1. Pack the CRX
+      - name: Pack CRX
+        run: |
+          mkdir -p dist
+          crx pack src -o dist/extension.crx -p private.pem
+
+      # 2. Generate update.xml pointing to the CONSTANT Release URL
+      - name: Generate update.xml
+        run: |
+          VERSION=$(cat src/manifest.json | jq -r .version)
+          APP_ID="${{ secrets.APP_ID }}"
+          # The trick: We hardcode the URL to the 'latest' tag
+          CRX_URL="https://github.com/${{ github.repository }}/releases/download/latest/extension.crx"
+          
+          cat <<EOF > dist/update.xml
+          <?xml version='1.0' encoding='UTF-8'?>
+          <gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
+            <app appid='$APP_ID'>
+              <updatecheck codebase='$CRX_URL' version='$VERSION' />
+            </app>
+          </gupdate>
+          EOF
+
+      # 3. Update the 'latest' tag (Delete old, Create new)
+      - name: Update Latest Release
+        uses: pyTooling/Actions/releaser@r0
+        with:
+          tag: latest
+          rm_existing_tag: true
+          files: |
+            dist/extension.crx
+            dist/update.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
