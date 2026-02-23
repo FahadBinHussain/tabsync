@@ -86,3 +86,54 @@ export function validateFirebaseConfig(config: any): boolean {
   
   return requiredFields.every(field => field in config && config[field]);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tor Browser detection
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Detect whether the extension is running inside Tor Browser.
+ *
+ * Strategy (layered, most-reliable first):
+ * 1. Check browser.proxy.settings — Tor Browser always routes through SOCKS5
+ *    on 127.0.0.1:9150 (or 9050 for Tor daemon).
+ * 2. Fall back to user-agent heuristics (Tor Browser is always Firefox).
+ *
+ * Returns true if we're almost certainly inside Tor Browser.
+ */
+export async function isTorBrowser(): Promise<boolean> {
+  // Method 1: proxy settings (most reliable, extension-level)
+  try {
+    const proxySettings = await (browser as any).proxy?.settings?.get({ incognito: false });
+    if (proxySettings?.value) {
+      const { proxyType, socksProxy, socks } = proxySettings.value;
+      const proxyStr: string = socksProxy ?? socks ?? '';
+      if (
+        proxyType === 'manual' &&
+        (proxyStr.includes('127.0.0.1:9150') || proxyStr.includes('127.0.0.1:9050') || proxyStr.includes('localhost:9150'))
+      ) {
+        return true;
+      }
+    }
+  } catch {
+    // browser.proxy.settings not available (Chrome, or no proxy permission)
+  }
+
+  // Method 2: user-agent fingerprint
+  // Tor Browser always identifies as a specific Firefox ESR version
+  // and never includes platform-specific tokens like "Windows NT" after
+  // a certain version. However this is less reliable — use only as hint.
+  const ua = navigator.userAgent;
+  if (!ua.includes('Firefox')) return false; // Tor is always Firefox-based
+
+  // Tor Browser suppresses detailed platform info — "Gecko/" with no extra tokens
+  // Standard Firefox: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/..."
+  // Tor Browser:      "Mozilla/5.0 (Windows NT 10.0; rv:128.0) Gecko/..."  (no "Win64; x64")
+  const hasPlatformDetails = /\(Windows NT [0-9.]+;[^)]*Win64/.test(ua) ||
+                              /\(Macintosh;[^)]*Mac OS X/.test(ua) ||
+                              /\(X11;[^)]*Linux/.test(ua);
+  if (!hasPlatformDetails) return true; // Tor Browser strips platform details
+
+  return false;
+}
+

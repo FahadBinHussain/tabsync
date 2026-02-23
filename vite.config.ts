@@ -6,6 +6,10 @@ import manifest from './src/manifest.ts';
 export default defineConfig({
   plugins: [react(), crx({ manifest })],
 
+  build: {
+    outDir: 'dist-chrome',
+  },
+
   server: {
     port: 5173,
     strictPort: true,

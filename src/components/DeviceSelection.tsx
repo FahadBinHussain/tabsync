@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import browser from 'webextension-polyfill';
-import { collection, getDocs } from 'firebase/firestore';
-import { initFirebase } from '../lib/firebase';
-import { loadFirebaseConfig } from '../lib/storage';
-
+import { loadFirebaseConfig, loadProxyUrl } from '../lib/storage';
+import { restListDocs, restSetDoc, extractRestConfig } from '../lib/firestoreRest';
+import { isTorBrowser } from '../lib/utils';
 interface Device {
   id: string;
   deviceName: string;
@@ -56,29 +55,36 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
       console.log('[TabSync] Firebase config loaded, project:', (firebaseConfig as any).projectId);
 
       setStatus({ stage: 'connecting' });
-      console.log('[TabSync] Initialising Firebase...');
-      const { db } = initFirebase(firebaseConfig);
-      console.log('[TabSync] Firestore handle acquired, querying devices collection...');
+      console.log('[TabSync] Extracting REST config...');
+      const tor = await isTorBrowser();
+      console.log('[TabSync] isTorBrowser:', tor);
+      // Use proxy if explicitly stored (user set it), otherwise only on Tor if available
+      const storedProxy = await loadProxyUrl();
+      const proxyUrl = storedProxy ?? undefined;
+      const restCfg = extractRestConfig(firebaseConfig, proxyUrl);
+      console.log('[TabSync] REST config ready' + (proxyUrl ? ` (proxy: ${proxyUrl})` : ' (direct)') + ', querying devices collection...');
 
       setStatus({ stage: 'querying' });
 
-      // NOTE: No orderBy — avoids needing a composite index and Firestore security
-      // rules that may not cover ordered queries. We sort client-side instead.
-      const snap = await getDocs(collection(db, 'devices'));
+      const docs = await restListDocs(restCfg, 'devices');
       clearTimeout(timer);
 
-      console.log(`[TabSync] Query complete — ${snap.size} document(s) returned`);
+      console.log(`[TabSync] Query complete — ${docs.length} document(s) returned`);
 
-      const list: Device[] = [];
-      snap.forEach((d) => {
-        console.log('[TabSync]  device doc:', d.id, d.data());
-        list.push({ id: d.id, ...d.data() } as Device);
+      const list: Device[] = docs.map((d) => {
+        console.log('[TabSync]  device doc:', d.id, d);
+        return {
+          id: d.id,
+          deviceName: d.deviceName ?? '',
+          lastUpdated: d.lastUpdated ?? null,
+          tabCount: d.tabCount ?? (Array.isArray(d.tabs) ? d.tabs.length : 0),
+        };
       });
 
       // Sort newest-first client-side
       list.sort((a, b) => {
-        const ta = a.lastUpdated?.toMillis?.() ?? a.lastUpdated ?? 0;
-        const tb = b.lastUpdated?.toMillis?.() ?? b.lastUpdated ?? 0;
+        const ta = a.lastUpdated instanceof Date ? a.lastUpdated.getTime() : (a.lastUpdated ?? 0);
+        const tb = b.lastUpdated instanceof Date ? b.lastUpdated.getTime() : (b.lastUpdated ?? 0);
         return tb - ta;
       });
 
@@ -118,11 +124,11 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
 
       const firebaseConfig = await loadFirebaseConfig();
       if (firebaseConfig) {
-        const { db } = initFirebase(firebaseConfig);
-        const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
-        await setDoc(doc(db, 'devices', deviceId), {
+        const proxyUrl = (await loadProxyUrl()) ?? undefined;
+        const restCfg = extractRestConfig(firebaseConfig, proxyUrl);
+        await restSetDoc(restCfg, `devices/${deviceId}`, {
           deviceName: newDeviceName.trim(),
-          lastUpdated: serverTimestamp(),
+          lastUpdated: new Date().toISOString(),
           tabs: [],
           tabCount: 0,
         });
@@ -137,7 +143,8 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
   const formatTimestamp = (ts: any): string => {
     if (!ts) return 'Unknown';
     try {
-      const date  = ts.toDate ? ts.toDate() : new Date(ts);
+      // REST returns plain Date objects; SDK returns Firestore Timestamps
+      const date = ts instanceof Date ? ts : (ts.toDate ? ts.toDate() : new Date(ts));
       const diffMs = Date.now() - date.getTime();
       const m = Math.floor(diffMs / 60_000);
       if (m < 1)  return 'Just now';
@@ -262,16 +269,28 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
                 : 'No existing devices found. Create your first device.'}
             </p>
           </div>
-          <button
-            onClick={() => { setStatus({ stage: 'idle' }); loadExistingDevices(); }}
-            title="Refresh device list"
-            className="p-2 text-gray-400 hover:text-white transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => browser.tabs.create({ url: browser.runtime.getURL('src/popup/index.html') }).then(() => window.close())}
+              className="p-2 text-gray-400 hover:text-white transition-colors"
+              title="Open in a full browser tab"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </button>
+            <button
+              onClick={() => { setStatus({ stage: 'idle' }); loadExistingDevices(); }}
+              title="Refresh device list"
+              className="p-2 text-gray-400 hover:text-white transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {saveError && (

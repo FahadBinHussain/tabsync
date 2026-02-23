@@ -142,7 +142,7 @@ function tryRun(cmd, env = {}) {
 async function buildChrome() {
   step('Chrome / Edge  —  build');
 
-  const distDir = path.join(rootDir, 'dist');
+  const distDir = path.join(rootDir, 'dist-chrome');
   const zipOut  = path.join(buildDir, `tabsync-chrome-v${version}.zip`);
   const crxOut  = path.join(buildDir, `tabsync-chrome-v${version}.crx`);
 
@@ -171,7 +171,7 @@ async function buildChrome() {
 
   console.log('');
   ok('Chrome packaging complete!');
-  info('Load unpacked: chrome://extensions → Load unpacked → select dist/');
+  info('Load unpacked: chrome://extensions → Load unpacked → select dist-chrome/');
   info('CRX sideload:  drag .crx into chrome://extensions/');
 }
 
@@ -191,7 +191,7 @@ function buildFirefoxManifest() {
         strict_min_version: '91.0',
       },
     },
-    permissions: ['tabs', 'storage', 'bookmarks', '<all_urls>'],
+    permissions: ['tabs', 'storage', 'bookmarks', '<all_urls>', 'proxy'],
     background: { scripts: ['background.js'] },
     browser_action: {
       default_popup: 'src/popup/index.html',

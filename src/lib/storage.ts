@@ -55,3 +55,42 @@ export async function clearFirebaseConfig(): Promise<void> {
     console.warn('[TabSync] Could not clear from storage.sync:', err);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Proxy URL storage (optional — needed for Tor Browser)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Save optional proxy URL (Cloudflare Worker) to both storage areas.
+ * Pass an empty string or null to clear it.
+ */
+export async function saveProxyUrl(proxyUrl: string): Promise<void> {
+  const val = proxyUrl.trim() || null;
+  await browser.storage.local.set({ proxyUrl: val });
+  try {
+    await browser.storage.sync.set({ proxyUrl: val });
+  } catch (err) {
+    console.warn('[TabSync] Could not write proxyUrl to storage.sync:', err);
+  }
+}
+
+/**
+ * Load the proxy URL. Returns null if not set.
+ */
+export async function loadProxyUrl(): Promise<string | null> {
+  const local = await browser.storage.local.get('proxyUrl');
+  if (local.proxyUrl) return local.proxyUrl as string;
+
+  try {
+    const synced = await browser.storage.sync.get('proxyUrl');
+    if (synced.proxyUrl) {
+      await browser.storage.local.set({ proxyUrl: synced.proxyUrl });
+      return synced.proxyUrl as string;
+    }
+  } catch (err) {
+    console.warn('[TabSync] Could not read proxyUrl from storage.sync:', err);
+  }
+
+  return null;
+}
+

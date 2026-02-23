@@ -1,22 +1,19 @@
 import browser from 'webextension-polyfill';
+import { debounce, isTorBrowser } from '../lib/utils';
+import { loadFirebaseConfig, loadProxyUrl } from '../lib/storage';
 import {
-  doc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  collection,
-  onSnapshot,
-  deleteDoc,
-  query,
-} from 'firebase/firestore';
-import { initFirebase } from '../lib/firebase';
-import { debounce } from '../lib/utils';
-import { loadFirebaseConfig } from '../lib/storage';
+  restSetDoc,
+  restUpdateDoc,
+  restListDocs,
+  restDeleteDoc,
+  extractRestConfig,
+  type FirestoreConfig,
+} from '../lib/firestoreRest';
 import type { BookmarkNode } from '../lib/types';
 
 let isInitialized = false;
-let db: any = null;
-let commandsUnsubscribe: (() => void) | null = null;
+let restCfg: FirestoreConfig | null = null;
+let commandPollInterval: ReturnType<typeof setInterval> | null = null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Init
@@ -33,11 +30,13 @@ async function initialize() {
       return;
     }
 
-    const { db: firestoreDb } = initFirebase(firebaseConfig);
-    db = firestoreDb;
+    const tor = await isTorBrowser();
+    console.log('[TabSync] isTorBrowser:', tor);
+    const proxyUrl = (await loadProxyUrl()) ?? undefined;
+    restCfg = extractRestConfig(firebaseConfig, proxyUrl);
     isInitialized = true;
 
-    console.log('[TabSync] Firebase initialized successfully');
+    console.log('[TabSync] REST config ready');
 
     startTabWatcher();
     startBookmarkWatcher();
@@ -52,7 +51,7 @@ async function initialize() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function syncTabs() {
-  if (!isInitialized || !db) return;
+  if (!isInitialized || !restCfg) return;
 
   try {
     const { deviceId, deviceName } = await browser.storage.local.get(['deviceId', 'deviceName']);
@@ -71,17 +70,12 @@ async function syncTabs() {
       pinned: tab.pinned,
     }));
 
-    const deviceRef = doc(db, 'devices', deviceId);
-    await setDoc(
-      deviceRef,
-      {
-        deviceName: deviceName || 'Unknown Device',
-        lastUpdated: serverTimestamp(),
-        tabs: tabsData,
-        tabCount: tabsData.length,
-      },
-      { merge: true }, // keep bookmarks field untouched
-    );
+    await restSetDoc(restCfg, `devices/${deviceId}`, {
+      deviceName: deviceName || 'Unknown Device',
+      lastUpdated: new Date().toISOString(),
+      tabs: tabsData,
+      tabCount: tabsData.length,
+    });
 
     console.log(`[TabSync] Synced ${tabsData.length} tabs`);
   } catch (error) {
@@ -108,9 +102,6 @@ function startTabWatcher() {
 // Bookmark sync
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Recursively convert browser BookmarkTreeNodes → our lighter BookmarkNode type.
- */
 function convertBookmarkTree(
   nodes: browser.Bookmarks.BookmarkTreeNode[],
 ): BookmarkNode[] {
@@ -131,7 +122,6 @@ function convertBookmarkTree(
     .filter(n => n.url || (n.children && n.children.length > 0));
 }
 
-/** Count all leaf URLs in the tree. */
 function countBookmarks(nodes: BookmarkNode[]): number {
   return nodes.reduce((acc, n) => {
     if (n.url) return acc + 1;
@@ -141,7 +131,7 @@ function countBookmarks(nodes: BookmarkNode[]): number {
 }
 
 async function syncBookmarks() {
-  if (!isInitialized || !db) return;
+  if (!isInitialized || !restCfg) return;
 
   try {
     const { deviceId } = await browser.storage.local.get('deviceId');
@@ -152,11 +142,10 @@ async function syncBookmarks() {
     const bookmarks = convertBookmarkTree(rootChildren);
     const bookmarkCount = countBookmarks(bookmarks);
 
-    const deviceRef = doc(db, 'devices', deviceId);
-    await updateDoc(deviceRef, {
+    await restUpdateDoc(restCfg, `devices/${deviceId}`, {
       bookmarks,
       bookmarkCount,
-      bookmarksUpdated: serverTimestamp(),
+      bookmarksUpdated: new Date().toISOString(),
     });
 
     console.log(`[TabSync] Synced ${bookmarkCount} bookmarks`);
@@ -180,7 +169,6 @@ function startBookmarkWatcher() {
   browser.bookmarks.onChanged.addListener(() => debouncedSyncBookmarks());
   browser.bookmarks.onMoved.addListener(() => debouncedSyncBookmarks());
 
-  // Firefox-only: batch import guard
   if ((browser.bookmarks as any).onImportEnded) {
     (browser.bookmarks as any).onImportEnded.addListener(() => debouncedSyncBookmarks());
   }
@@ -189,42 +177,45 @@ function startBookmarkWatcher() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Command listener
+// Command listener (poll-based REST — zero persistent connections)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function startCommandListener() {
-  if (commandsUnsubscribe) commandsUnsubscribe();
+const COMMAND_POLL_MS = 3000;
+
+async function pollCommands() {
+  if (!isInitialized || !restCfg) return;
 
   try {
     const { deviceId } = await browser.storage.local.get('deviceId');
     if (!deviceId) return;
 
-    const commandsQuery = query(collection(db, 'devices', deviceId, 'commands'));
-
-    console.log('[TabSync] Starting command listener');
-
-    commandsUnsubscribe = onSnapshot(
-      commandsQuery,
-      (snapshot) => {
-        snapshot.docChanges().forEach(async (change) => {
-          if (change.type === 'added') {
-            await executeCommand(change.doc.data(), change.doc.id);
-          }
-        });
-      },
-      (error) => {
-        console.error('[TabSync] Command listener error:', error);
-      },
-    );
+    const commands = await restListDocs(restCfg, `devices/${deviceId}/commands`);
+    for (const cmd of commands) {
+      await executeCommand(cmd, cmd.id);
+    }
   } catch (error) {
-    console.error('[TabSync] Failed to start command listener:', error);
+    console.error('[TabSync] Command poll error:', error);
   }
+}
+
+async function startCommandListener() {
+  if (commandPollInterval !== null) {
+    clearInterval(commandPollInterval);
+    commandPollInterval = null;
+  }
+
+  const { deviceId } = await browser.storage.local.get('deviceId').catch(() => ({ deviceId: null }));
+  if (!deviceId) return;
+
+  console.log('[TabSync] Starting command poll listener');
+  await pollCommands();
+  commandPollInterval = setInterval(pollCommands, COMMAND_POLL_MS);
 }
 
 async function executeCommand(command: any, commandId: string) {
   try {
     const { deviceId } = await browser.storage.local.get('deviceId');
-    if (!deviceId) return;
+    if (!deviceId || !restCfg) return;
 
     switch (command.action) {
       case 'closeTab':
@@ -268,7 +259,7 @@ async function executeCommand(command: any, commandId: string) {
         console.warn('[TabSync] Unknown command action:', command.action);
     }
 
-    await deleteDoc(doc(db, 'devices', deviceId, 'commands', commandId));
+    await restDeleteDoc(restCfg, `devices/${deviceId}/commands/${commandId}`);
     console.log(`[TabSync] Command ${commandId} done`);
   } catch (error) {
     console.error('[TabSync] Failed to execute command:', error);
@@ -283,9 +274,9 @@ browser.storage.onChanged.addListener((changes: any, areaName: string) => {
   if (areaName === 'local') {
     if (changes.firebaseConfig) {
       console.log('[TabSync] Firebase config changed, reinitializing...');
-      if (commandsUnsubscribe) { commandsUnsubscribe(); commandsUnsubscribe = null; }
+      if (commandPollInterval !== null) { clearInterval(commandPollInterval); commandPollInterval = null; }
       isInitialized = false;
-      db = null;
+      restCfg = null;
       initialize();
     }
 
@@ -303,3 +294,4 @@ browser.storage.onChanged.addListener((changes: any, areaName: string) => {
 // ─────────────────────────────────────────────────────────────────────────────
 initialize();
 console.log('[TabSync] Background script loaded');
+

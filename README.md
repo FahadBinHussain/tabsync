@@ -225,6 +225,41 @@ service cloud.firestore {
 
 ⚠️ **Warning**: These rules allow anyone with your Firebase config to read/write. Only share your config with trusted devices.
 
+## Tor Browser / Proxy Support
+
+Google blocks Tor exit node IPs from accessing `firestore.googleapis.com` directly.  
+To use TabSync in Tor Browser, deploy the included Cloudflare Worker as a proxy.
+
+### Deploy the Cloudflare Worker (5 minutes, free)
+
+**Prerequisites:** [Cloudflare account](https://dash.cloudflare.com/) (free tier is fine) + [wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
+
+```bash
+pnpm install -g wrangler
+wrangler login
+```
+
+**1. Create the worker**
+
+```bash
+wrangler deploy scripts/cf-worker.js --name tabsync-proxy --compatibility-date 2024-01-01
+```
+
+**2. Set your Firebase API key as a secret** (never stored in code)
+
+```bash
+wrangler secret put FIREBASE_API_KEY
+# paste your Firebase API key when prompted
+```
+
+**3. Configure TabSync**
+
+In the TabSync setup form, paste the worker URL into the **"Proxy URL"** field, e.g.:  
+`https://tabsync-proxy.yourname.workers.dev`
+
+All Firestore requests route through your worker instead of hitting Google directly.
+The worker injects the `FIREBASE_API_KEY` secret server-side, so your key is never sent over Tor.
+
 ## License
 
 MIT License - See LICENSE file for details

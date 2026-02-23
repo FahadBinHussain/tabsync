@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { doc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
+import { restSetDoc, type FirestoreConfig } from '../lib/firestoreRest';
 import type { BookmarkNode } from '../lib/types';
 
 interface BookmarkTreeProps {
   nodes: BookmarkNode[];
-  db: any;
+  restCfg: FirestoreConfig | null;
   currentDeviceId: string;
-  targetDeviceId: string;          // device whose bookmarks we're viewing
+  targetDeviceId: string;
   otherDevices: { id: string; deviceName: string }[];
   isCurrentDevice: boolean;
 }
@@ -18,7 +18,7 @@ interface BookmarkTreeProps {
 interface NodeRowProps {
   node: BookmarkNode;
   depth: number;
-  db: any;
+  restCfg: FirestoreConfig | null;
   currentDeviceId: string;
   targetDeviceId: string;
   otherDevices: { id: string; deviceName: string }[];
@@ -28,29 +28,28 @@ interface NodeRowProps {
 function NodeRow({
   node,
   depth,
-  db,
+  restCfg,
   currentDeviceId,
   targetDeviceId,
   otherDevices,
   isCurrentDevice,
 }: NodeRowProps) {
   const isFolder = !node.url;
-  const [open, setOpen] = useState(depth < 1); // auto-expand first level
+  const [open, setOpen] = useState(depth < 1);
   const [sendPopover, setSendPopover] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
-  /** Queue a createBookmark command on a target device. */
   const sendBookmarkToDevice = async (targetId: string) => {
-    if (!db || !node.url) return;
+    if (!restCfg || !node.url) return;
     setSendPopover(false);
     try {
-      const cmdRef = doc(collection(db, 'devices', targetId, 'commands'));
-      await setDoc(cmdRef, {
+      const cmdId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      await restSetDoc(restCfg, `devices/${targetId}/commands/${cmdId}`, {
         action: 'createBookmark',
         url: node.url,
         title: node.title,
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
         fromDevice: currentDeviceId,
       });
       setSentTo(targetId);
@@ -60,20 +59,19 @@ function NodeRow({
     }
   };
 
-  /** Import entire folder recursively to THIS device via commands. */
   const importFolder = async (nodes: BookmarkNode[]) => {
-    if (!db) return;
+    if (!restCfg) return;
     setImporting(true);
     try {
       const flat = flattenBookmarks(nodes);
       await Promise.all(
         flat.map(bm => {
-          const cmdRef = doc(collection(db, 'devices', currentDeviceId, 'commands'));
-          return setDoc(cmdRef, {
+          const cmdId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+          return restSetDoc(restCfg!, `devices/${currentDeviceId}/commands/${cmdId}`, {
             action: 'createBookmark',
             url: bm.url,
             title: bm.title,
-            createdAt: serverTimestamp(),
+            createdAt: new Date().toISOString(),
             fromDevice: currentDeviceId,
           });
         }),
@@ -91,38 +89,26 @@ function NodeRow({
   if (isFolder) {
     return (
       <div>
-        {/* Folder row */}
         <div
           className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-700 rounded cursor-pointer group transition-colors"
           style={{ paddingLeft: `${8 + indentPx}px` }}
           onClick={() => setOpen(o => !o)}
         >
-          {/* Chevron */}
           <svg
             className={`w-3 h-3 text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
             fill="none" stroke="currentColor" viewBox="0 0 24 24"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
-
-          {/* Folder icon */}
-          <svg
-            className="w-4 h-4 text-yellow-400 flex-shrink-0"
-            fill="currentColor" viewBox="0 0 24 24"
-          >
+          <svg className="w-4 h-4 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
             <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
           </svg>
-
           <span className="text-sm flex-1 truncate text-gray-200">{node.title}</span>
-
-          {/* Child count badge */}
           {node.children && (
             <span className="text-xs text-gray-500 flex-shrink-0 mr-1">
               {countLeaves(node.children)}
             </span>
           )}
-
-          {/* Import folder button — only for remote devices */}
           {!isCurrentDevice && node.children && node.children.length > 0 && (
             <button
               onClick={(e) => { e.stopPropagation(); importFolder(node.children!); }}
@@ -134,8 +120,6 @@ function NodeRow({
             </button>
           )}
         </div>
-
-        {/* Children */}
         {open && node.children && (
           <div>
             {node.children.map(child => (
@@ -143,7 +127,7 @@ function NodeRow({
                 key={child.id}
                 node={child}
                 depth={depth + 1}
-                db={db}
+                restCfg={restCfg}
                 currentDeviceId={currentDeviceId}
                 targetDeviceId={targetDeviceId}
                 otherDevices={otherDevices}
@@ -156,29 +140,22 @@ function NodeRow({
     );
   }
 
-  // ── Leaf bookmark ──────────────────────────────────────────────────────────
   return (
     <div
       className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-700 rounded group transition-colors relative"
       style={{ paddingLeft: `${8 + indentPx}px` }}
     >
-      {/* Favicon */}
       <img
         src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(node.url ?? '')}&sz=16`}
         alt=""
         className="w-4 h-4 flex-shrink-0 rounded"
         onError={(e) => { e.currentTarget.style.display = 'none'; }}
       />
-
-      {/* Title + URL */}
       <div className="flex-1 min-w-0">
         <p className="text-sm truncate text-gray-200 leading-tight">{node.title}</p>
         <p className="text-xs text-gray-500 truncate leading-tight">{node.url}</p>
       </div>
-
-      {/* Action buttons (shown on hover) */}
       <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-all">
-        {/* Open locally */}
         <button
           onClick={() => window.open(node.url, '_blank')}
           className="p-1 hover:bg-gray-600 rounded"
@@ -189,8 +166,6 @@ function NodeRow({
               d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
           </svg>
         </button>
-
-        {/* Send to device (only when viewing another device's bookmarks, or for current device send to others) */}
         {otherDevices.length > 0 && (
           <div className="relative">
             <button
@@ -203,7 +178,6 @@ function NodeRow({
                   d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
             </button>
-
             {sendPopover && (
               <div className="absolute right-0 top-7 z-50 w-48 bg-gray-900 border border-gray-600 rounded-lg shadow-xl overflow-hidden">
                 <div className="px-3 py-2 bg-gray-800 border-b border-gray-700">
@@ -232,7 +206,7 @@ function NodeRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper: flatten tree to leaf URLs
+// Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 function flattenBookmarks(nodes: BookmarkNode[]): BookmarkNode[] {
@@ -257,7 +231,7 @@ function countLeaves(nodes: BookmarkNode[]): number {
 
 export function BookmarkTree({
   nodes,
-  db,
+  restCfg,
   currentDeviceId,
   targetDeviceId,
   otherDevices,
@@ -269,17 +243,17 @@ export function BookmarkTree({
   const allLeaves = flattenBookmarks(nodes);
 
   const importAll = async () => {
-    if (!db || isCurrentDevice) return;
+    if (!restCfg || isCurrentDevice) return;
     setImportingAll(true);
     try {
       await Promise.all(
         allLeaves.map(bm => {
-          const cmdRef = doc(collection(db, 'devices', currentDeviceId, 'commands'));
-          return setDoc(cmdRef, {
+          const cmdId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+          return restSetDoc(restCfg!, `devices/${currentDeviceId}/commands/${cmdId}`, {
             action: 'createBookmark',
             url: bm.url,
             title: bm.title,
-            createdAt: serverTimestamp(),
+            createdAt: new Date().toISOString(),
             fromDevice: currentDeviceId,
           });
         }),
@@ -307,7 +281,6 @@ export function BookmarkTree({
 
   return (
     <div>
-      {/* Toolbar — import all (only for remote devices) */}
       {!isCurrentDevice && allLeaves.length > 0 && (
         <div className="flex items-center justify-between mb-3 px-1">
           <p className="text-xs text-gray-500">{allLeaves.length} bookmark(s)</p>
@@ -337,15 +310,13 @@ export function BookmarkTree({
           </button>
         </div>
       )}
-
-      {/* Tree */}
       <div className="space-y-0.5">
         {nodes.map(node => (
           <NodeRow
             key={node.id}
             node={node}
             depth={0}
-            db={db}
+            restCfg={restCfg}
             currentDeviceId={currentDeviceId}
             targetDeviceId={targetDeviceId}
             otherDevices={otherDevices}
@@ -356,3 +327,4 @@ export function BookmarkTree({
     </div>
   );
 }
+

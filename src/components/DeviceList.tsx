@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import browser from 'webextension-polyfill';
-import { collection, onSnapshot, query, orderBy, doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { initFirebase, resetFirebase } from '../lib/firebase';
-import { getDeviceId } from '../lib/utils';
-import { clearFirebaseConfig, loadFirebaseConfig } from '../lib/storage';
+import { resetFirebase } from '../lib/firebase';
+import { getDeviceId, isTorBrowser } from '../lib/utils';
+import { clearFirebaseConfig, loadFirebaseConfig, loadProxyUrl } from '../lib/storage';
+import {
+  restListDocs,
+  restSetDoc,
+  restUpdateDoc,
+  extractRestConfig,
+  type FirestoreConfig,
+} from '../lib/firestoreRest';
 import { BookmarkTree } from './BookmarkTree';
 import type { BookmarkNode, SyncedTab, DeviceDocument } from '../lib/types';
 
@@ -25,7 +31,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedDevices, setExpandedDevices] = useState<Set<string>>(new Set());
-  const [db, setDb] = useState<any>(null);
+  const [restCfg, setRestCfg] = useState<FirestoreConfig | null>(null);
 
   // Per-card view toggle: 'tabs' | 'bookmarks'
   const [cardView, setCardView] = useState<Record<string, CardView>>({});
@@ -42,52 +48,53 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
   const [renameSaving, setRenameSaving] = useState(false);
 
   useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-    async function setupFirestore() {
+    async function setup() {
       try {
-        // Initialize Firebase — use loadFirebaseConfig (local → sync fallback)
         const firebaseConfig = await loadFirebaseConfig();
-        
+
         if (!firebaseConfig) {
           setError('No Firebase config found');
           setLoading(false);
           return;
         }
 
-        // Initialize Firebase
-        const { db: firestoreDb } = initFirebase(firebaseConfig);
-        setDb(firestoreDb);
+        const tor = await isTorBrowser();
+        console.log('[TabSync] isTorBrowser:', tor);
+        const proxyUrl = (await loadProxyUrl()) ?? undefined;
+        const cfg = extractRestConfig(firebaseConfig, proxyUrl);
+        setRestCfg(cfg);
 
-        // Get current device ID
         const deviceId = await getDeviceId();
         setCurrentDeviceId(deviceId);
 
-        // Listen to devices collection
-        const devicesQuery = query(
-          collection(firestoreDb, 'devices'),
-          orderBy('lastUpdated', 'desc')
-        );
+        // Initial load
+        const docs = await restListDocs(cfg, 'devices');
+        const sorted = docs
+          .map(d => ({ ...d } as unknown as Device))
+          .sort((a, b) => {
+            const ta = a.lastUpdated instanceof Date ? a.lastUpdated.getTime() : (a.lastUpdated ? new Date(String(a.lastUpdated)).getTime() : 0);
+            const tb = b.lastUpdated instanceof Date ? b.lastUpdated.getTime() : (b.lastUpdated ? new Date(String(b.lastUpdated)).getTime() : 0);
+            return tb - ta;
+          });
+        setDevices(sorted);
+        setLoading(false);
 
-        unsubscribe = onSnapshot(
-          devicesQuery,
-          (snapshot) => {
-            const devicesList: Device[] = [];
-            snapshot.forEach((doc) => {
-              devicesList.push({
-                id: doc.id,
-                ...doc.data(),
-              } as Device);
-            });
-            setDevices(devicesList);
-            setLoading(false);
-          },
-          (err) => {
-            console.error('[TabSync] Firestore error:', err);
-            setError('Failed to load devices: ' + err.message);
-            setLoading(false);
-          }
-        );
+        // Poll every 5s for updates
+        pollInterval = setInterval(async () => {
+          try {
+            const refreshed = await restListDocs(cfg, 'devices');
+            const resorted = refreshed
+              .map(d => ({ ...d } as unknown as Device))
+              .sort((a, b) => {
+                const ta = a.lastUpdated instanceof Date ? a.lastUpdated.getTime() : (a.lastUpdated ? new Date(String(a.lastUpdated)).getTime() : 0);
+                const tb = b.lastUpdated instanceof Date ? b.lastUpdated.getTime() : (b.lastUpdated ? new Date(String(b.lastUpdated)).getTime() : 0);
+                return tb - ta;
+              });
+            setDevices(resorted);
+          } catch { /* silent */ }
+        }, 5000);
       } catch (err: any) {
         console.error('[TabSync] Setup error:', err);
         setError('Failed to initialize: ' + err.message);
@@ -95,12 +102,10 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
       }
     }
 
-    setupFirestore();
+    setup();
 
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, []);
 
@@ -126,22 +131,21 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
     tab: Tab,
     popoverKey: string,
   ) => {
-    if (!db) return;
+    if (!restCfg) return;
 
     setSendPopover(null);
 
     try {
-      const commandRef = doc(collection(db, 'devices', targetDeviceId, 'commands'));
-      await setDoc(commandRef, {
+      const cmdId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      await restSetDoc(restCfg, `devices/${targetDeviceId}/commands/${cmdId}`, {
         action: 'openTab',
         url: tab.url,
         title: tab.title,
         active: false,
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
         fromDevice: currentDeviceId,
       });
 
-      // Show "✓ Sent" flash for 2 s
       const flashKey = `${targetDeviceId}::${popoverKey}`;
       setSentFlash(flashKey);
       setTimeout(() => setSentFlash(f => (f === flashKey ? null : f)), 2000);
@@ -186,18 +190,17 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
   };
 
   const closeRemoteTab = async (deviceId: string, tabId: number) => {
-    if (!db) return;
-    
+    if (!restCfg) return;
+
     try {
-      // Create a command document in the target device's commands subcollection
-      const commandRef = doc(collection(db, 'devices', deviceId, 'commands'));
-      await setDoc(commandRef, {
+      const cmdId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      await restSetDoc(restCfg, `devices/${deviceId}/commands/${cmdId}`, {
         action: 'closeTab',
         tabId: tabId,
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
         fromDevice: currentDeviceId,
       });
-      
+
       console.log(`[TabSync] Sent close command for tab ${tabId} to device ${deviceId}`);
     } catch (error) {
       console.error('[TabSync] Failed to send close command:', error);
@@ -209,13 +212,12 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
    */
   const saveRename = async (deviceId: string) => {
     const trimmed = renameDraft.trim();
-    if (!trimmed || !db) return;
+    if (!trimmed || !restCfg) return;
 
     setRenameSaving(true);
     try {
-      await updateDoc(doc(db, 'devices', deviceId), { deviceName: trimmed });
+      await restUpdateDoc(restCfg, `devices/${deviceId}`, { deviceName: trimmed });
 
-      // Keep local storage in sync for the current device
       if (deviceId === currentDeviceId) {
         await browser.storage.local.set({ deviceName: trimmed });
       }
@@ -291,6 +293,17 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
             <p className="text-gray-400">{devices.length} device(s) synced</p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => browser.tabs.create({ url: browser.runtime.getURL('src/popup/index.html') }).then(() => window.close())}
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-sm flex items-center gap-1.5"
+              title="Open in a full browser tab"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Open in tab
+            </button>
             <button
               onClick={onReselectDevice}
               className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-sm"
@@ -575,7 +588,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                         {(cardView[device.id] ?? 'tabs') === 'bookmarks' && (
                           <BookmarkTree
                             nodes={(device.bookmarks ?? []) as BookmarkNode[]}
-                            db={db}
+                            restCfg={restCfg}
                             currentDeviceId={currentDeviceId}
                             targetDeviceId={device.id}
                             otherDevices={devices

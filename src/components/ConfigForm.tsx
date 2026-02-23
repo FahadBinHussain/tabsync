@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { validateFirebaseConfig } from '../lib/utils';
-import { saveFirebaseConfig } from '../lib/storage';
+import { useState, useEffect } from 'react';
+import browser from 'webextension-polyfill';
+import { validateFirebaseConfig, isTorBrowser } from '../lib/utils';
+import { saveFirebaseConfig, saveProxyUrl, loadProxyUrl } from '../lib/storage';
 
 interface ConfigFormProps {
   onConfigSaved: () => void;
@@ -70,8 +71,16 @@ function convertToJSON(text: string): string {
 
 export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
   const [configText, setConfigText] = useState('');
+  const [proxyUrl, setProxyUrl] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [torStatus, setTorStatus] = useState<'checking' | 'tor' | 'normal'>('checking');
+
+  // Load existing proxy URL so user can edit it
+  useEffect(() => {
+    loadProxyUrl().then(url => { if (url) setProxyUrl(url); }).catch(() => {});
+    isTorBrowser().then(isTor => setTorStatus(isTor ? 'tor' : 'normal')).catch(() => setTorStatus('normal'));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,8 +116,9 @@ export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
         throw new Error(`Missing required fields: ${missing.join(', ')}`);
       }
 
-      // Save to both storage.local and storage.sync (survives reinstalls)
+      // Save Firebase config and proxy URL
       await saveFirebaseConfig(config);
+      await saveProxyUrl(proxyUrl.trim());
 
       // Notify parent
       onConfigSaved();
@@ -128,14 +138,34 @@ export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
     }
   };
 
+  const openInTab = () => {
+    const url = browser.runtime.getURL('src/popup/index.html');
+    browser.tabs.create({ url });
+    window.close();
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6">
       <div className="max-w-2xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">TabSync Configuration</h1>
-          <p className="text-gray-400">
-            Paste your Firebase configuration JSON to get started
-          </p>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">TabSync Configuration</h1>
+            <p className="text-gray-400">
+              Paste your Firebase configuration JSON to get started
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openInTab}
+            title="Open in a full browser tab (easier to paste)"
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors mt-1"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Open in tab
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -150,6 +180,44 @@ export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
               className="w-full h-64 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
               required
             />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium">
+                Proxy URL <span className="text-gray-400 font-normal">(optional — required for Tor Browser)</span>
+              </label>
+              {/* Network / Tor detection status badge */}
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                torStatus === 'checking'
+                  ? 'bg-gray-700 text-gray-400'
+                  : torStatus === 'tor'
+                  ? 'bg-purple-800/70 text-purple-200'
+                  : 'bg-green-800/70 text-green-200'
+              }`}>
+                {torStatus === 'checking' && '⏳ Detecting…'}
+                {torStatus === 'tor' && '🧅 Tor detected'}
+                {torStatus === 'normal' && '🌐 Normal browser'}
+              </span>
+            </div>
+            <input
+              type="url"
+              value={proxyUrl}
+              onChange={(e) => setProxyUrl(e.target.value)}
+              placeholder="https://tabsync-proxy.yourname.workers.dev"
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+            />
+            <div className="mt-1 flex items-center gap-2 text-xs">
+              <span className={`px-1.5 py-0.5 rounded ${proxyUrl.trim() ? 'bg-blue-800/60 text-blue-200' : 'bg-gray-700 text-gray-400'}`}>
+                {proxyUrl.trim() ? '✓ Proxy active' : '○ Direct (no proxy)'}
+              </span>
+              {torStatus === 'tor' && !proxyUrl.trim() && (
+                <span className="text-yellow-400">⚠ Tor detected but no proxy URL set — requests may fail</span>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Deploy <code className="bg-gray-800 px-1 rounded">scripts/cf-worker.js</code> to Cloudflare Workers, then paste the worker URL here. Tor Browser users <strong className="text-gray-300">must</strong> set this.
+            </p>
           </div>
 
           {error && (
