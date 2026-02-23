@@ -145,12 +145,12 @@ export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6">
+    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6">
       <div className="max-w-2xl mx-auto">
-        <div className="mb-8 flex items-start justify-between gap-4">
+        <div className="mb-6 sm:mb-8 flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold mb-2">TabSync Configuration</h1>
-            <p className="text-gray-400">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">TabSync Configuration</h1>
+            <p className="text-sm sm:text-base text-gray-400">
               Paste your Firebase configuration JSON to get started
             </p>
           </div>
@@ -158,13 +158,13 @@ export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
             type="button"
             onClick={openInTab}
             title="Open in a full browser tab (easier to paste)"
-            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors mt-1"
+            className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs sm:text-sm transition-colors mt-1"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
             </svg>
-            Open in tab
+            <span className="hidden sm:inline">Open in tab</span>
           </button>
         </div>
 
@@ -177,13 +177,13 @@ export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
               value={configText}
               onChange={(e) => setConfigText(e.target.value)}
               placeholder={`{\n  "apiKey": "AIza...",\n  "authDomain": "your-project.firebaseapp.com",\n  "projectId": "your-project-id",\n  "storageBucket": "your-project.appspot.com",\n  "messagingSenderId": "123456789",\n  "appId": "1:123456789:web:abc123"\n}`}
-              className="w-full h-64 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+              className="w-full h-44 sm:h-64 px-3 py-2 sm:px-4 sm:py-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-xs sm:text-sm resize-y"
               required
             />
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
               <label className="block text-sm font-medium">
                 Proxy URL <span className="text-gray-400 font-normal">(optional — required for Tor Browser)</span>
               </label>
@@ -205,9 +205,9 @@ export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
               value={proxyUrl}
               onChange={(e) => setProxyUrl(e.target.value)}
               placeholder="https://tabsync-proxy.yourname.workers.dev"
-              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+              className="w-full px-3 py-2 sm:px-4 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-xs sm:text-sm"
             />
-            <div className="mt-1 flex items-center gap-2 text-xs">
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
               <span className={`px-1.5 py-0.5 rounded ${proxyUrl.trim() ? 'bg-blue-800/60 text-blue-200' : 'bg-gray-700 text-gray-400'}`}>
                 {proxyUrl.trim() ? '✓ Proxy active' : '○ Direct (no proxy)'}
               </span>
@@ -221,7 +221,7 @@ export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
           </div>
 
           {error && (
-            <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg">
+            <div className="bg-red-900/50 border border-red-700 text-red-200 px-3 py-2 sm:px-4 sm:py-3 rounded-lg text-sm">
               {error}
             </div>
           )}
@@ -230,23 +230,23 @@ export function ConfigForm({ onConfigSaved }: ConfigFormProps) {
             <button
               type="button"
               onClick={handlePaste}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              className="px-3 py-2 sm:px-4 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-sm"
             >
-              Paste from Clipboard
+              Paste
             </button>
             <button
               type="submit"
               disabled={loading || !configText}
-              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors font-medium"
+              className="flex-1 px-3 py-2 sm:px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors font-medium text-sm"
             >
               {loading ? 'Saving...' : 'Save Configuration'}
             </button>
           </div>
         </form>
 
-        <div className="mt-8 p-4 bg-blue-900/30 border border-blue-700 rounded-lg">
-          <h3 className="font-semibold mb-2">How to get your Firebase config:</h3>
-          <ol className="list-decimal list-inside space-y-1 text-sm text-gray-300">
+        <div className="mt-6 sm:mt-8 p-3 sm:p-4 bg-blue-900/30 border border-blue-700 rounded-lg">
+          <h3 className="font-semibold mb-2 text-sm sm:text-base">How to get your Firebase config:</h3>
+          <ol className="list-decimal list-inside space-y-1 text-xs sm:text-sm text-gray-300">
             <li>Go to Firebase Console</li>
             <li>Select your project (or create a new one)</li>
             <li>Go to Project Settings → General</li>

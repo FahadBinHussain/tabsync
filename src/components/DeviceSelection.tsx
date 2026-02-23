@@ -170,9 +170,9 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <div className="text-center space-y-4 px-6">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto" />
-          <p className="text-white font-medium">
+        <div className="text-center space-y-4 px-4">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-blue-500 mx-auto" />
+          <p className="text-white font-medium text-sm sm:text-base">
             {stageLabel[status.stage] ?? 'Loading…'}
           </p>
           <p className="text-xs text-gray-500">Timeout in 12s — will show error if stuck</p>
@@ -184,21 +184,21 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
   // ── Error state ────────────────────────────────────────────────────────────
   if (status.stage === 'error') {
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-6">
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full space-y-4">
-          <div className="bg-red-900/50 border border-red-700 rounded-lg p-4">
-            <p className="font-semibold text-red-300 mb-1">⚠️ Could not load devices</p>
-            <p className="text-sm text-red-200">{status.message}</p>
+          <div className="bg-red-900/50 border border-red-700 rounded-lg p-3 sm:p-4">
+            <p className="font-semibold text-red-300 mb-1 text-sm sm:text-base">⚠️ Could not load devices</p>
+            <p className="text-xs sm:text-sm text-red-200">{status.message}</p>
           </div>
           <button
             onClick={() => { setStatus({ stage: 'idle' }); loadExistingDevices(); }}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors"
+            className="w-full py-2.5 sm:py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors text-sm sm:text-base"
           >
             🔄 Retry
           </button>
           <button
             onClick={() => setShowNewDevice(true)}
-            className="w-full py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors"
+            className="w-full py-2.5 sm:py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors text-sm sm:text-base"
           >
             + Create new device anyway
           </button>
@@ -210,11 +210,11 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
   // ── Create new device form ─────────────────────────────────────────────────
   if (showNewDevice) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white p-6">
+      <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6">
         <div className="max-w-xl mx-auto">
           <button
             onClick={() => setShowNewDevice(false)}
-            className="mb-6 text-gray-400 hover:text-white flex items-center gap-2"
+            className="mb-5 sm:mb-6 text-gray-400 hover:text-white flex items-center gap-2 text-sm"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -222,13 +222,13 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
             Back to device list
           </button>
 
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Create New Device</h1>
-            <p className="text-gray-400">Give this device a name to identify it</p>
+          <div className="mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">Create New Device</h1>
+            <p className="text-sm sm:text-base text-gray-400">Give this device a name to identify it</p>
           </div>
 
           {saveError && (
-            <div className="mb-4 bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg">
+            <div className="mb-4 bg-red-900/50 border border-red-700 text-red-200 px-3 py-2 sm:px-4 sm:py-3 rounded-lg text-sm">
               {saveError}
             </div>
           )}
@@ -239,14 +239,14 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
               value={newDeviceName}
               onChange={(e) => setNewDeviceName(e.target.value)}
               placeholder="e.g., Work Laptop, Home Desktop"
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2.5 sm:px-4 sm:py-3 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleCreateNewDevice()}
             />
             <button
               onClick={handleCreateNewDevice}
               disabled={saving || !newDeviceName.trim()}
-              className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors font-medium"
+              className="w-full px-4 py-2.5 sm:py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors font-medium text-sm sm:text-base"
             >
               {saving ? 'Creating…' : 'Create Device'}
             </button>
@@ -258,21 +258,21 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
 
   // ── Device list ────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6">
+    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6">
       <div className="max-w-2xl mx-auto">
-        <div className="mb-6 flex items-start justify-between">
+        <div className="mb-5 sm:mb-6 flex items-start justify-between gap-2">
           <div>
-            <h1 className="text-3xl font-bold mb-1">Select Device</h1>
-            <p className="text-gray-400">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-1">Select Device</h1>
+            <p className="text-xs sm:text-sm text-gray-400">
               {devices.length > 0
                 ? `${devices.length} device(s) found — choose one or create new`
                 : 'No existing devices found. Create your first device.'}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <button
               onClick={() => browser.tabs.create({ url: browser.runtime.getURL('src/popup/index.html') }).then(() => window.close())}
-              className="p-2 text-gray-400 hover:text-white transition-colors"
+              className="p-1.5 sm:p-2 text-gray-400 hover:text-white transition-colors"
               title="Open in a full browser tab"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -283,9 +283,9 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
             <button
               onClick={() => { setStatus({ stage: 'idle' }); loadExistingDevices(); }}
               title="Refresh device list"
-              className="p-2 text-gray-400 hover:text-white transition-colors"
+              className="p-1.5 sm:p-2 text-gray-400 hover:text-white transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
@@ -294,28 +294,28 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
         </div>
 
         {saveError && (
-          <div className="mb-4 bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg">
+          <div className="mb-4 bg-red-900/50 border border-red-700 text-red-200 px-3 py-2 sm:px-4 sm:py-3 rounded-lg text-sm">
             {saveError}
           </div>
         )}
 
         {devices.length > 0 && (
-          <div className="mb-6 space-y-3">
+          <div className="mb-5 sm:mb-6 space-y-2 sm:space-y-3">
             {devices.map((device) => (
               <button
                 key={device.id}
                 onClick={() => handleSelectExistingDevice(device)}
                 disabled={saving}
-                className="w-full text-left p-4 bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-blue-500 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full text-left p-3 sm:p-4 bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-blue-500 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-semibold text-lg">{device.deviceName}</h3>
-                    <p className="text-sm text-gray-400 mt-0.5">
+                <div className="flex justify-between items-center gap-2">
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-base sm:text-lg truncate">{device.deviceName}</h3>
+                    <p className="text-xs sm:text-sm text-gray-400 mt-0.5 truncate">
                       {device.tabCount || 0} tab(s) • Last active {formatTimestamp(device.lastUpdated)}
                     </p>
                   </div>
-                  <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </div>
@@ -324,13 +324,13 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
           </div>
         )}
 
-        <div className={devices.length > 0 ? 'border-t border-gray-700 pt-5' : ''}>
+        <div className={devices.length > 0 ? 'border-t border-gray-700 pt-4 sm:pt-5' : ''}>
           <button
             onClick={() => setShowNewDevice(true)}
             disabled={saving}
-            className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+            className="w-full px-4 py-2.5 sm:py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition-colors font-medium flex items-center justify-center gap-2 text-sm sm:text-base"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             Create New Device

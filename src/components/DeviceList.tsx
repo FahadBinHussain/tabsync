@@ -259,8 +259,8 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
     return (
       <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading devices...</p>
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-400 text-sm sm:text-base">Loading devices...</p>
         </div>
       </div>
     );
@@ -268,14 +268,14 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white p-6">
+      <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6">
         <div className="max-w-2xl mx-auto">
-          <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg">
+          <div className="bg-red-900/50 border border-red-700 text-red-200 px-3 py-2 sm:px-4 sm:py-3 rounded-lg text-sm">
             {error}
           </div>
           <button
             onClick={handleResetConfig}
-            className="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+            className="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-sm"
           >
             Reset Configuration
           </button>
@@ -285,49 +285,49 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6">
+    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-wrap justify-between items-start gap-3 mb-5 sm:mb-6">
           <div>
-            <h1 className="text-3xl font-bold mb-1">TabSync</h1>
-            <p className="text-gray-400">{devices.length} device(s) synced</p>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-1">TabSync</h1>
+            <p className="text-xs sm:text-sm text-gray-400">{devices.length} device(s) synced</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => browser.tabs.create({ url: browser.runtime.getURL('src/popup/index.html') }).then(() => window.close())}
-              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-sm flex items-center gap-1.5"
+              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-xs sm:text-sm flex items-center gap-1.5"
               title="Open in a full browser tab"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
-              Open in tab
+              <span className="hidden sm:inline">Open in tab</span>
             </button>
             <button
               onClick={onReselectDevice}
-              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-sm"
+              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-xs sm:text-sm"
               title="Switch to a different device"
             >
-              Switch Device
+              Switch
             </button>
             <button
               onClick={handleResetConfig}
-              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-sm"
+              className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-xs sm:text-sm"
               title="Reset Firebase configuration"
             >
-              Reset Config
+              Reset
             </button>
           </div>
         </div>
 
         {devices.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-400 mb-2">No devices found</p>
-            <p className="text-sm text-gray-500">Open some tabs to start syncing</p>
+          <div className="text-center py-10 sm:py-12">
+            <p className="text-gray-400 mb-2 text-sm sm:text-base">No devices found</p>
+            <p className="text-xs sm:text-sm text-gray-500">Open some tabs to start syncing</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {devices.map((device) => {
               const isExpanded = expandedDevices.has(device.id);
               const isCurrent = device.id === currentDeviceId;
@@ -340,16 +340,16 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                   }`}
                 >
                   <div
-                    className="p-4 cursor-pointer hover:bg-gray-750"
+                    className="p-3 sm:p-4 cursor-pointer hover:bg-gray-750"
                     onClick={() => toggleDevice(device.id)}
                   >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                           {/* ── Inline rename ── */}
                           {renamingDeviceId === device.id ? (
                             <div
-                              className="flex items-center gap-2 flex-1"
+                              className="flex items-center gap-1.5 sm:gap-2 flex-1"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <input
@@ -363,7 +363,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                                     setRenameDraft('');
                                   }
                                 }}
-                                className="flex-1 px-2 py-1 bg-gray-700 border border-blue-500 rounded text-sm focus:outline-none"
+                                className="flex-1 min-w-0 px-2 py-1 bg-gray-700 border border-blue-500 rounded text-sm focus:outline-none"
                               />
                               <button
                                 onClick={() => saveRename(device.id)}
@@ -381,9 +381,9 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                             </div>
                           ) : (
                             <>
-                              <h3 className="font-semibold">{device.deviceName}</h3>
+                              <h3 className="font-semibold text-sm sm:text-base truncate">{device.deviceName}</h3>
                               {isCurrent && (
-                                <span className="px-2 py-0.5 bg-blue-600 text-xs rounded">
+                                <span className="px-1.5 py-0.5 bg-blue-600 text-xs rounded flex-shrink-0">
                                   This Device
                                 </span>
                               )}
@@ -405,18 +405,18 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                             </>
                           )}
                         </div>
-                        <p className="text-sm text-gray-400 mt-1">
+                        <p className="text-xs text-gray-400 mt-1 truncate">
                           {device.tabCount} tab(s) • {device.bookmarkCount ?? 0} bookmark(s) • Updated {formatTimestamp(device.lastUpdated)}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                         {!isCurrent && device.tabs.length > 0 && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               openAllTabs(device.tabs);
                             }}
-                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors"
+                            className="px-2 py-1 sm:px-3 bg-blue-600 hover:bg-blue-700 rounded text-xs transition-colors"
                           >
                             Open All
                           </button>
@@ -443,10 +443,10 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                   {isExpanded && (
                     <div className="border-t border-gray-700 bg-gray-850">
                       {/* ── Tabs | Bookmarks pill toggle ── */}
-                      <div className="flex items-center gap-1 px-4 pt-3 pb-2">
+                      <div className="flex items-center gap-1 px-3 pt-2.5 pb-2 sm:px-4 sm:pt-3">
                         <button
                           onClick={(e) => { e.stopPropagation(); setCardView(v => ({ ...v, [device.id]: 'tabs' })); }}
-                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                          className={`px-2.5 py-1 sm:px-3 rounded-full text-xs font-medium transition-colors ${
                             (cardView[device.id] ?? 'tabs') === 'tabs'
                               ? 'bg-blue-600 text-white'
                               : 'bg-gray-700 text-gray-400 hover:text-white'
@@ -456,7 +456,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setCardView(v => ({ ...v, [device.id]: 'bookmarks' })); }}
-                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
+                          className={`px-2.5 py-1 sm:px-3 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
                             (cardView[device.id] ?? 'tabs') === 'bookmarks'
                               ? 'bg-blue-600 text-white'
                               : 'bg-gray-700 text-gray-400 hover:text-white'
@@ -469,14 +469,14 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                         </button>
                       </div>
 
-                      <div className="px-4 pb-4">
+                      <div className="px-3 pb-3 sm:px-4 sm:pb-4">
                         {/* ── Tabs panel ── */}
                         {(cardView[device.id] ?? 'tabs') === 'tabs' && (
                           <>
                             {device.tabs.length === 0 ? (
-                              <p className="text-gray-500 text-sm py-4 text-center">No tabs</p>
+                              <p className="text-gray-500 text-xs sm:text-sm py-3 sm:py-4 text-center">No tabs</p>
                             ) : (
-                              <div className="space-y-2">
+                              <div className="space-y-1.5 sm:space-y-2">
                                 {device.tabs.map((tab, index) => {
                                   const popoverKey = `${device.id}::${index}`;
                                   const isPopoverOpen = sendPopover === popoverKey;
@@ -485,7 +485,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                                   return (
                                     <div
                                       key={index}
-                                      className="flex items-center gap-3 p-2 hover:bg-gray-800 rounded transition-colors group relative"
+                                      className="flex items-center gap-2 p-1.5 sm:gap-3 sm:p-2 hover:bg-gray-800 rounded transition-colors group relative"
                                     >
                                       {tab.favIconUrl ? (
                                         <img
@@ -502,7 +502,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                                         className={`flex-1 min-w-0 ${!isCurrent ? 'cursor-pointer' : ''}`}
                                         onClick={() => !isCurrent && openTab(tab.url)}
                                       >
-                                        <p className="text-sm truncate">{tab.title}</p>
+                                        <p className="text-xs sm:text-sm truncate">{tab.title}</p>
                                         <p className="text-xs text-gray-500 truncate">{tab.url}</p>
                                       </div>
 
@@ -530,7 +530,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                                             {isPopoverOpen && (
                                               <div
                                                 ref={popoverRef}
-                                                className="absolute right-0 top-7 z-50 w-52 bg-gray-900 border border-gray-600 rounded-lg shadow-xl overflow-hidden"
+                                                className="absolute right-0 top-7 z-50 w-44 sm:w-52 bg-gray-900 border border-gray-600 rounded-lg shadow-xl overflow-hidden"
                                                 onClick={(e) => e.stopPropagation()}
                                               >
                                                 <div className="px-3 py-2 bg-gray-800 border-b border-gray-700">
@@ -546,7 +546,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                                                       key={target.id}
                                                       onClick={() => sendTabToDevice(target.id, tab, popoverKey)}
                                                       disabled={isSent}
-                                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700 flex items-center justify-between gap-2 transition-colors disabled:opacity-60"
+                                                      className="w-full text-left px-3 py-2 text-xs sm:text-sm hover:bg-gray-700 flex items-center justify-between gap-2 transition-colors disabled:opacity-60"
                                                     >
                                                       <span className="truncate">{target.deviceName}</span>
                                                       {isSent && (
