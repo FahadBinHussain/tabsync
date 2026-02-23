@@ -4,25 +4,15 @@ import { collection, onSnapshot, query, orderBy, doc, setDoc, updateDoc, serverT
 import { initFirebase, resetFirebase } from '../lib/firebase';
 import { getDeviceId } from '../lib/utils';
 import { clearFirebaseConfig, loadFirebaseConfig } from '../lib/storage';
+import { BookmarkTree } from './BookmarkTree';
+import type { BookmarkNode, SyncedTab, DeviceDocument } from '../lib/types';
 
-interface Tab {
-  id?: number;
-  url: string;
-  title: string;
-  favIconUrl?: string;
-  windowId?: number;
-  index?: number;
-  active?: boolean;
-  pinned?: boolean;
-}
+// Local aliases so the rest of the file is unchanged
+type Tab = SyncedTab;
+type Device = DeviceDocument;
 
-interface Device {
-  id: string;
-  deviceName: string;
-  lastUpdated: any;
-  tabs: Tab[];
-  tabCount: number;
-}
+// Per-card view: 'tabs' | 'bookmarks'
+type CardView = 'tabs' | 'bookmarks';
 
 interface DeviceListProps {
   onResetConfig: () => void;
@@ -36,6 +26,9 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
   const [error, setError] = useState('');
   const [expandedDevices, setExpandedDevices] = useState<Set<string>>(new Set());
   const [db, setDb] = useState<any>(null);
+
+  // Per-card view toggle: 'tabs' | 'bookmarks'
+  const [cardView, setCardView] = useState<Record<string, CardView>>({});
 
   // key: `${sourceDeviceId}::${tabIndex}`, value: true when popover open
   const [sendPopover, setSendPopover] = useState<string | null>(null);
@@ -400,7 +393,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                           )}
                         </div>
                         <p className="text-sm text-gray-400 mt-1">
-                          {device.tabCount} tab(s) • Updated {formatTimestamp(device.lastUpdated)}
+                          {device.tabCount} tab(s) • {device.bookmarkCount ?? 0} bookmark(s) • Updated {formatTimestamp(device.lastUpdated)}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -435,127 +428,163 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                   </div>
 
                   {isExpanded && (
-                    <div className="border-t border-gray-700 p-4 bg-gray-850">
-                      {device.tabs.length === 0 ? (
-                        <p className="text-gray-500 text-sm">No tabs</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {device.tabs.map((tab, index) => {
-                            const popoverKey = `${device.id}::${index}`;
-                            const isPopoverOpen = sendPopover === popoverKey;
-                            // Other devices the user can send this tab TO
-                            const otherDevices = devices.filter(d => d.id !== device.id);
+                    <div className="border-t border-gray-700 bg-gray-850">
+                      {/* ── Tabs | Bookmarks pill toggle ── */}
+                      <div className="flex items-center gap-1 px-4 pt-3 pb-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setCardView(v => ({ ...v, [device.id]: 'tabs' })); }}
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                            (cardView[device.id] ?? 'tabs') === 'tabs'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-700 text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          Tabs ({device.tabCount ?? device.tabs.length})
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setCardView(v => ({ ...v, [device.id]: 'bookmarks' })); }}
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${
+                            (cardView[device.id] ?? 'tabs') === 'bookmarks'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-700 text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                          </svg>
+                          Bookmarks ({device.bookmarkCount ?? 0})
+                        </button>
+                      </div>
 
-                            return (
-                              <div
-                                key={index}
-                                className="flex items-center gap-3 p-2 hover:bg-gray-800 rounded transition-colors group relative"
-                              >
-                                {/* Favicon */}
-                                {tab.favIconUrl ? (
-                                  <img
-                                    src={tab.favIconUrl}
-                                    alt=""
-                                    className="w-4 h-4 flex-shrink-0"
-                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                  />
-                                ) : (
-                                  <div className="w-4 h-4 bg-gray-600 rounded flex-shrink-0" />
-                                )}
+                      <div className="px-4 pb-4">
+                        {/* ── Tabs panel ── */}
+                        {(cardView[device.id] ?? 'tabs') === 'tabs' && (
+                          <>
+                            {device.tabs.length === 0 ? (
+                              <p className="text-gray-500 text-sm py-4 text-center">No tabs</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {device.tabs.map((tab, index) => {
+                                  const popoverKey = `${device.id}::${index}`;
+                                  const isPopoverOpen = sendPopover === popoverKey;
+                                  const otherDevices = devices.filter(d => d.id !== device.id);
 
-                                {/* Title + URL — clicking opens tab locally (only for remote tabs) */}
-                                <div
-                                  className={`flex-1 min-w-0 ${!isCurrent ? 'cursor-pointer' : ''}`}
-                                  onClick={() => !isCurrent && openTab(tab.url)}
-                                >
-                                  <p className="text-sm truncate">{tab.title}</p>
-                                  <p className="text-xs text-gray-500 truncate">{tab.url}</p>
-                                </div>
-
-                                {/* Action buttons */}
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  {tab.pinned && (
-                                    <span className="text-xs text-gray-500 mr-1">📌</span>
-                                  )}
-
-                                  {/* ── Send-to-Device button (visible on hover) ── */}
-                                  {otherDevices.length > 0 && (
-                                    <div className="relative">
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSendPopover(isPopoverOpen ? null : popoverKey);
-                                        }}
-                                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-blue-600 rounded transition-all"
-                                        title="Send tab to another device"
-                                      >
-                                        {/* Send / share icon */}
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                                        </svg>
-                                      </button>
-
-                                      {/* Device picker popover */}
-                                      {isPopoverOpen && (
-                                        <div
-                                          ref={popoverRef}
-                                          className="absolute right-0 top-7 z-50 w-52 bg-gray-900 border border-gray-600 rounded-lg shadow-xl overflow-hidden"
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          <div className="px-3 py-2 bg-gray-800 border-b border-gray-700">
-                                            <p className="text-xs font-semibold text-gray-300 uppercase tracking-wide">
-                                              Send tab to…
-                                            </p>
-                                          </div>
-                                          {otherDevices.map(target => {
-                                            const flashKey = `${target.id}::${popoverKey}`;
-                                            const isSent = sentFlash === flashKey;
-                                            return (
-                                              <button
-                                                key={target.id}
-                                                onClick={() => sendTabToDevice(target.id, tab, popoverKey)}
-                                                disabled={isSent}
-                                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700 flex items-center justify-between gap-2 transition-colors disabled:opacity-60"
-                                              >
-                                                <span className="truncate">{target.deviceName}</span>
-                                                {isSent ? (
-                                                  <span className="text-green-400 text-xs flex-shrink-0">✓ Sent</span>
-                                                ) : (
-                                                  <span className="text-gray-500 text-xs flex-shrink-0">
-                                                    {target.id === currentDeviceId ? '(this device)' : ''}
-                                                  </span>
-                                                )}
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* ── Close remote tab button (only for tabs on OTHER devices) ── */}
-                                  {!isCurrent && tab.id && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        closeRemoteTab(device.id, tab.id!);
-                                      }}
-                                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-600 rounded transition-all"
-                                      title="Close this tab on the remote device"
+                                  return (
+                                    <div
+                                      key={index}
+                                      className="flex items-center gap-3 p-2 hover:bg-gray-800 rounded transition-colors group relative"
                                     >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                          d="M6 18L18 6M6 6l12 12" />
-                                      </svg>
-                                    </button>
-                                  )}
-                                </div>
+                                      {tab.favIconUrl ? (
+                                        <img
+                                          src={tab.favIconUrl}
+                                          alt=""
+                                          className="w-4 h-4 flex-shrink-0"
+                                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                        />
+                                      ) : (
+                                        <div className="w-4 h-4 bg-gray-600 rounded flex-shrink-0" />
+                                      )}
+
+                                      <div
+                                        className={`flex-1 min-w-0 ${!isCurrent ? 'cursor-pointer' : ''}`}
+                                        onClick={() => !isCurrent && openTab(tab.url)}
+                                      >
+                                        <p className="text-sm truncate">{tab.title}</p>
+                                        <p className="text-xs text-gray-500 truncate">{tab.url}</p>
+                                      </div>
+
+                                      <div className="flex items-center gap-1 flex-shrink-0">
+                                        {tab.pinned && (
+                                          <span className="text-xs text-gray-500 mr-1">📌</span>
+                                        )}
+
+                                        {otherDevices.length > 0 && (
+                                          <div className="relative">
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSendPopover(isPopoverOpen ? null : popoverKey);
+                                              }}
+                                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-blue-600 rounded transition-all"
+                                              title="Send tab to another device"
+                                            >
+                                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                              </svg>
+                                            </button>
+
+                                            {isPopoverOpen && (
+                                              <div
+                                                ref={popoverRef}
+                                                className="absolute right-0 top-7 z-50 w-52 bg-gray-900 border border-gray-600 rounded-lg shadow-xl overflow-hidden"
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                <div className="px-3 py-2 bg-gray-800 border-b border-gray-700">
+                                                  <p className="text-xs font-semibold text-gray-300 uppercase tracking-wide">
+                                                    Send tab to…
+                                                  </p>
+                                                </div>
+                                                {otherDevices.map(target => {
+                                                  const flashKey = `${target.id}::${popoverKey}`;
+                                                  const isSent = sentFlash === flashKey;
+                                                  return (
+                                                    <button
+                                                      key={target.id}
+                                                      onClick={() => sendTabToDevice(target.id, tab, popoverKey)}
+                                                      disabled={isSent}
+                                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700 flex items-center justify-between gap-2 transition-colors disabled:opacity-60"
+                                                    >
+                                                      <span className="truncate">{target.deviceName}</span>
+                                                      {isSent && (
+                                                        <span className="text-green-400 text-xs flex-shrink-0">✓ Sent</span>
+                                                      )}
+                                                    </button>
+                                                  );
+                                                })}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+
+                                        {!isCurrent && tab.id && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              closeRemoteTab(device.id, tab.id!);
+                                            }}
+                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-600 rounded transition-all"
+                                            title="Close this tab on the remote device"
+                                          >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                            )}
+                          </>
+                        )}
+
+                        {/* ── Bookmarks panel ── */}
+                        {(cardView[device.id] ?? 'tabs') === 'bookmarks' && (
+                          <BookmarkTree
+                            nodes={(device.bookmarks ?? []) as BookmarkNode[]}
+                            db={db}
+                            currentDeviceId={currentDeviceId}
+                            targetDeviceId={device.id}
+                            otherDevices={devices
+                              .filter(d => d.id !== device.id)
+                              .map(d => ({ id: d.id, deviceName: d.deviceName }))}
+                            isCurrentDevice={isCurrent}
+                          />
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

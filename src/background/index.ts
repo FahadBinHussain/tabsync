@@ -1,62 +1,62 @@
 import browser from 'webextension-polyfill';
-import { doc, setDoc, serverTimestamp, collection, onSnapshot, deleteDoc, query } from 'firebase/firestore';
+import {
+  doc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+  collection,
+  onSnapshot,
+  deleteDoc,
+  query,
+} from 'firebase/firestore';
 import { initFirebase } from '../lib/firebase';
 import { debounce } from '../lib/utils';
 import { loadFirebaseConfig } from '../lib/storage';
+import type { BookmarkNode } from '../lib/types';
 
 let isInitialized = false;
 let db: any = null;
 let commandsUnsubscribe: (() => void) | null = null;
 
-/**
- * Initialize Firebase when config is available
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function initialize() {
   if (isInitialized) return;
 
   try {
-    // loadFirebaseConfig checks storage.local first, falls back to storage.sync
     const firebaseConfig = await loadFirebaseConfig();
-    
+
     if (!firebaseConfig) {
       console.log('[TabSync] No Firebase config found. Waiting for user to provide config.');
       return;
     }
 
-    // Initialize Firebase
     const { db: firestoreDb } = initFirebase(firebaseConfig);
     db = firestoreDb;
     isInitialized = true;
 
     console.log('[TabSync] Firebase initialized successfully');
 
-    // Start watching tabs
     startTabWatcher();
-    
-    // Start watching for commands
+    startBookmarkWatcher();
     startCommandListener();
   } catch (error) {
     console.error('[TabSync] Failed to initialize:', error);
   }
 }
 
-/**
- * Sync tabs to Firestore
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Tab sync
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function syncTabs() {
-  if (!isInitialized || !db) {
-    console.log('[TabSync] Firebase not initialized, skipping sync');
-    return;
-  }
+  if (!isInitialized || !db) return;
 
   try {
-    // Check if device is configured
     const { deviceId, deviceName } = await browser.storage.local.get(['deviceId', 'deviceName']);
-    
-    if (!deviceId) {
-      console.log('[TabSync] No device selected yet, skipping sync');
-      return;
-    }
+    if (!deviceId) return;
 
     const tabs = await browser.tabs.query({});
 
@@ -71,74 +71,135 @@ async function syncTabs() {
       pinned: tab.pinned,
     }));
 
-    // Write to Firestore: devices/{deviceId}
     const deviceRef = doc(db, 'devices', deviceId);
-    await setDoc(deviceRef, {
-      deviceName: deviceName || 'Unknown Device',
-      lastUpdated: serverTimestamp(),
-      tabs: tabsData,
-      tabCount: tabsData.length,
-    });
+    await setDoc(
+      deviceRef,
+      {
+        deviceName: deviceName || 'Unknown Device',
+        lastUpdated: serverTimestamp(),
+        tabs: tabsData,
+        tabCount: tabsData.length,
+      },
+      { merge: true }, // keep bookmarks field untouched
+    );
 
-    console.log(`[TabSync] Synced ${tabsData.length} tabs to Firestore`);
+    console.log(`[TabSync] Synced ${tabsData.length} tabs`);
   } catch (error) {
     console.error('[TabSync] Failed to sync tabs:', error);
   }
 }
 
-// Debounced sync (2 seconds)
-const debouncedSync = debounce(syncTabs, 2000);
+const debouncedSyncTabs = debounce(syncTabs, 2000);
 
-/**
- * Start watching for tab changes
- */
 function startTabWatcher() {
   console.log('[TabSync] Starting tab watcher');
 
-  // Listen for tab updates
-  browser.tabs.onUpdated.addListener((_tabId, changeInfo, _tab) => {
-    if (changeInfo.status === 'complete' || changeInfo.url) {
-      debouncedSync();
-    }
+  browser.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+    if (changeInfo.status === 'complete' || changeInfo.url) debouncedSyncTabs();
   });
+  browser.tabs.onCreated.addListener(() => debouncedSyncTabs());
+  browser.tabs.onRemoved.addListener(() => debouncedSyncTabs());
+  browser.tabs.onMoved.addListener(() => debouncedSyncTabs());
 
-  // Listen for tab creation
-  browser.tabs.onCreated.addListener(() => {
-    debouncedSync();
-  });
-
-  // Listen for tab removal
-  browser.tabs.onRemoved.addListener(() => {
-    debouncedSync();
-  });
-
-  // Listen for tab movement
-  browser.tabs.onMoved.addListener(() => {
-    debouncedSync();
-  });
-
-  // Initial sync
-  syncTabs();
+  syncTabs(); // initial
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Bookmark sync
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Start watching for commands directed at this device
+ * Recursively convert browser BookmarkTreeNodes → our lighter BookmarkNode type.
  */
-async function startCommandListener() {
-  if (commandsUnsubscribe) {
-    commandsUnsubscribe();
-  }
+function convertBookmarkTree(
+  nodes: browser.Bookmarks.BookmarkTreeNode[],
+): BookmarkNode[] {
+  return nodes
+    .map((node): BookmarkNode => {
+      const converted: BookmarkNode = {
+        id: node.id,
+        title: node.title || '(untitled)',
+        dateAdded: node.dateAdded,
+      };
+      if (node.url) converted.url = node.url;
+      if (node.children && node.children.length > 0) {
+        const kids = convertBookmarkTree(node.children);
+        if (kids.length > 0) converted.children = kids;
+      }
+      return converted;
+    })
+    .filter(n => n.url || (n.children && n.children.length > 0));
+}
+
+/** Count all leaf URLs in the tree. */
+function countBookmarks(nodes: BookmarkNode[]): number {
+  return nodes.reduce((acc, n) => {
+    if (n.url) return acc + 1;
+    if (n.children) return acc + countBookmarks(n.children);
+    return acc;
+  }, 0);
+}
+
+async function syncBookmarks() {
+  if (!isInitialized || !db) return;
 
   try {
     const { deviceId } = await browser.storage.local.get('deviceId');
-    
-    if (!deviceId) {
-      console.log('[TabSync] No device selected, skipping command listener');
-      return;
-    }
+    if (!deviceId) return;
 
-    const commandsRef = collection(db, 'devices', deviceId, 'commands');
-    const commandsQuery = query(commandsRef);
+    const tree = await browser.bookmarks.getTree();
+    const rootChildren = tree[0]?.children ?? [];
+    const bookmarks = convertBookmarkTree(rootChildren);
+    const bookmarkCount = countBookmarks(bookmarks);
+
+    const deviceRef = doc(db, 'devices', deviceId);
+    await updateDoc(deviceRef, {
+      bookmarks,
+      bookmarkCount,
+      bookmarksUpdated: serverTimestamp(),
+    });
+
+    console.log(`[TabSync] Synced ${bookmarkCount} bookmarks`);
+  } catch (error) {
+    console.error('[TabSync] Failed to sync bookmarks:', error);
+  }
+}
+
+const debouncedSyncBookmarks = debounce(syncBookmarks, 3000);
+
+function startBookmarkWatcher() {
+  if (!browser.bookmarks) {
+    console.warn('[TabSync] bookmarks API not available');
+    return;
+  }
+
+  console.log('[TabSync] Starting bookmark watcher');
+
+  browser.bookmarks.onCreated.addListener(() => debouncedSyncBookmarks());
+  browser.bookmarks.onRemoved.addListener(() => debouncedSyncBookmarks());
+  browser.bookmarks.onChanged.addListener(() => debouncedSyncBookmarks());
+  browser.bookmarks.onMoved.addListener(() => debouncedSyncBookmarks());
+
+  // Firefox-only: batch import guard
+  if ((browser.bookmarks as any).onImportEnded) {
+    (browser.bookmarks as any).onImportEnded.addListener(() => debouncedSyncBookmarks());
+  }
+
+  syncBookmarks(); // initial
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Command listener
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function startCommandListener() {
+  if (commandsUnsubscribe) commandsUnsubscribe();
+
+  try {
+    const { deviceId } = await browser.storage.local.get('deviceId');
+    if (!deviceId) return;
+
+    const commandsQuery = query(collection(db, 'devices', deviceId, 'commands'));
 
     console.log('[TabSync] Starting command listener');
 
@@ -147,36 +208,23 @@ async function startCommandListener() {
       (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === 'added') {
-            const commandDoc = change.doc;
-            const command = commandDoc.data();
-            
-            console.log('[TabSync] Received command:', command);
-            
-            // Execute command
-            await executeCommand(command, commandDoc.id);
+            await executeCommand(change.doc.data(), change.doc.id);
           }
         });
       },
       (error) => {
         console.error('[TabSync] Command listener error:', error);
-      }
+      },
     );
   } catch (error) {
     console.error('[TabSync] Failed to start command listener:', error);
   }
 }
 
-/**
- * Execute a command and mark it as done
- */
 async function executeCommand(command: any, commandId: string) {
   try {
     const { deviceId } = await browser.storage.local.get('deviceId');
-    
-    if (!deviceId) {
-      console.log('[TabSync] No device selected, cannot execute command');
-      return;
-    }
+    if (!deviceId) return;
 
     switch (command.action) {
       case 'closeTab':
@@ -185,7 +233,7 @@ async function executeCommand(command: any, commandId: string) {
             await browser.tabs.remove(command.tabId);
             console.log(`[TabSync] Closed tab ${command.tabId}`);
           } catch (err) {
-            console.error(`[TabSync] Failed to close tab ${command.tabId}:`, err);
+            console.error('[TabSync] Failed to close tab:', err);
           }
         }
         break;
@@ -193,10 +241,25 @@ async function executeCommand(command: any, commandId: string) {
       case 'openTab':
         if (command.url) {
           try {
-            await browser.tabs.create({ url: command.url, active: command.active || false });
+            await browser.tabs.create({ url: command.url, active: command.active ?? false });
             console.log(`[TabSync] Opened tab ${command.url}`);
           } catch (err) {
-            console.error(`[TabSync] Failed to open tab ${command.url}:`, err);
+            console.error('[TabSync] Failed to open tab:', err);
+          }
+        }
+        break;
+
+      case 'createBookmark':
+        if (command.url && browser.bookmarks) {
+          try {
+            await browser.bookmarks.create({
+              title: command.title || command.url,
+              url: command.url,
+              ...(command.parentId ? { parentId: command.parentId } : {}),
+            });
+            console.log(`[TabSync] Created bookmark "${command.title}"`);
+          } catch (err) {
+            console.error('[TabSync] Failed to create bookmark:', err);
           }
         }
         break;
@@ -205,46 +268,38 @@ async function executeCommand(command: any, commandId: string) {
         console.warn('[TabSync] Unknown command action:', command.action);
     }
 
-    // Delete the command to mark as done
-    const commandRef = doc(db, 'devices', deviceId, 'commands', commandId);
-    await deleteDoc(commandRef);
-    console.log(`[TabSync] Command ${commandId} executed and deleted`);
+    await deleteDoc(doc(db, 'devices', deviceId, 'commands', commandId));
+    console.log(`[TabSync] Command ${commandId} done`);
   } catch (error) {
     console.error('[TabSync] Failed to execute command:', error);
   }
 }
 
-/**
- * Listen for storage changes (in case config is added)
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Storage change watcher
+// ─────────────────────────────────────────────────────────────────────────────
+
 browser.storage.onChanged.addListener((changes: any, areaName: string) => {
   if (areaName === 'local') {
     if (changes.firebaseConfig) {
       console.log('[TabSync] Firebase config changed, reinitializing...');
-      
-      // Cleanup old listeners
-      if (commandsUnsubscribe) {
-        commandsUnsubscribe();
-        commandsUnsubscribe = null;
-      }
-      
+      if (commandsUnsubscribe) { commandsUnsubscribe(); commandsUnsubscribe = null; }
       isInitialized = false;
       db = null;
       initialize();
     }
-    
+
     if (changes.deviceId) {
-      console.log('[TabSync] Device changed, triggering sync...');
-      // Restart command listener with new device
+      console.log('[TabSync] Device changed, restarting watchers...');
       if (isInitialized) {
         startCommandListener();
         syncTabs();
+        syncBookmarks();
       }
     }
   }
 });
 
-// Initialize on startup
+// ─────────────────────────────────────────────────────────────────────────────
 initialize();
-
 console.log('[TabSync] Background script loaded');
