@@ -36,3 +36,4 @@ key.pem
 *.pem
 key.pem
 .env
+noscript

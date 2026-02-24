@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build:test": "node scripts/build-test.js",
+    "build:hello": "node scripts/build-hello.js",
     "pack:all": "node scripts/pack.js",
     "bump": "node scripts/bump.js",
     "bump:minor": "node scripts/bump.js minor",

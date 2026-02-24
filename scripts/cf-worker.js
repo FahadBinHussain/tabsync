@@ -26,9 +26,12 @@ export default {
 
     const url = new URL(request.url);
 
-    // Only proxy /v1/ paths
+    // Only proxy /v1/ paths; / returns a health check
     if (!url.pathname.startsWith('/v1/')) {
-      return new Response('Not found', { status: 404 });
+      return new Response(JSON.stringify({ ok: true, service: 'tabsync-proxy' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(request) },
+      });
     }
 
     // Inject API key server-side (never expose it in client requests)
