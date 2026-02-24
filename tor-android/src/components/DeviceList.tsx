@@ -31,6 +31,11 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
   const [expandedDevices, setExpandedDevices] = useState<Set<string>>(new Set());
   const [restCfg, setRestCfg] = useState<FirestoreConfig | null>(null);
 
+  // Detect if browser API is available (it won't be on Tor Browser for unsigned extensions)
+  const browserApiAvailable =
+    typeof (globalThis as any).browser !== 'undefined' ||
+    typeof (globalThis as any).chrome !== 'undefined';
+
   // Per-card view toggle: 'tabs' | 'bookmarks'
   const [cardView, setCardView] = useState<Record<string, CardView>>({});
 
@@ -459,7 +464,16 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                         {/* ── Tabs panel ── */}
                         {(cardView[device.id] ?? 'tabs') === 'tabs' && (
                           <>
-                            {device.tabs.length === 0 ? (
+                            {isCurrent && !browserApiAvailable ? (
+                              <div className="py-4 px-2 text-center">
+                                <p className="text-yellow-400 text-xs font-medium mb-1">⚠️ Tab sync unavailable</p>
+                                <p className="text-gray-400 text-xs">
+                                  Browser API is not accessible in this environment (e.g. unsigned extension on Tor Browser).
+                                  Tabs and bookmarks cannot be synced from this device automatically.
+                                  You can still view and send tabs from other devices.
+                                </p>
+                              </div>
+                            ) : device.tabs.length === 0 ? (
                               <p className="text-gray-500 text-xs sm:text-sm py-3 sm:py-4 text-center">No tabs</p>
                             ) : (
                               <div className="space-y-1.5 sm:space-y-2">
@@ -504,7 +518,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                                                 e.stopPropagation();
                                                 setSendPopover(isPopoverOpen ? null : popoverKey);
                                               }}
-                                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-blue-600 rounded transition-all"
+                                              className="p-1 hover:bg-blue-600 rounded transition-all"
                                               title="Send tab to another device"
                                             >
                                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -552,7 +566,7 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                                               e.stopPropagation();
                                               closeRemoteTab(device.id, tab.id!);
                                             }}
-                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-600 rounded transition-all"
+                                            className="p-1 hover:bg-red-600 rounded transition-all"
                                             title="Close this tab on the remote device"
                                           >
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -572,16 +586,26 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
 
                         {/* ── Bookmarks panel ── */}
                         {(cardView[device.id] ?? 'tabs') === 'bookmarks' && (
-                          <BookmarkTree
-                            nodes={(device.bookmarks ?? []) as BookmarkNode[]}
-                            restCfg={restCfg}
-                            currentDeviceId={currentDeviceId}
-                            targetDeviceId={device.id}
-                            otherDevices={devices
-                              .filter(d => d.id !== device.id)
-                              .map(d => ({ id: d.id, deviceName: d.deviceName }))}
-                            isCurrentDevice={isCurrent}
-                          />
+                          isCurrent && !browserApiAvailable ? (
+                            <div className="py-4 px-2 text-center">
+                              <p className="text-yellow-400 text-xs font-medium mb-1">⚠️ Bookmark sync unavailable</p>
+                              <p className="text-gray-400 text-xs">
+                                Browser API is not accessible — bookmarks cannot be synced from this device.
+                                You can still view and import bookmarks from other devices.
+                              </p>
+                            </div>
+                          ) : (
+                            <BookmarkTree
+                              nodes={(device.bookmarks ?? []) as BookmarkNode[]}
+                              restCfg={restCfg}
+                              currentDeviceId={currentDeviceId}
+                              targetDeviceId={device.id}
+                              otherDevices={devices
+                                .filter(d => d.id !== device.id)
+                                .map(d => ({ id: d.id, deviceName: d.deviceName }))}
+                              isCurrentDevice={isCurrent}
+                            />
+                          )
                         )}
                       </div>
                     </div>
