@@ -39,6 +39,7 @@ function NodeRow({
   const [sendPopover, setSendPopover] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [openingAll, setOpeningAll] = useState(false);
 
   const sendBookmarkToDevice = async (targetId: string) => {
     if (!restCfg || !node.url) return;
@@ -84,6 +85,25 @@ function NodeRow({
     }
   };
 
+  const openFolderInNewTabs = (nodes: BookmarkNode[]) => {
+    const leaves = flattenBookmarks(nodes).filter(bm => !!bm.url);
+    if (leaves.length === 0) return;
+
+    setOpeningAll(true);
+    try {
+      leaves.forEach(bm => {
+        const url = bm.url!;
+        if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+          chrome.tabs.create({ url });
+        } else {
+          window.open(url, '_blank');
+        }
+      });
+    } finally {
+      setTimeout(() => setOpeningAll(false), 1200);
+    }
+  };
+
   const indentPx = depth * 16;
 
   if (isFolder) {
@@ -108,6 +128,16 @@ function NodeRow({
             <span className="text-xs text-gray-500 flex-shrink-0 mr-1">
               {countLeaves(node.children)}
             </span>
+          )}
+          {node.children && node.children.length > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); openFolderInNewTabs(node.children!); }}
+              disabled={openingAll}
+              className="opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 rounded text-xs flex-shrink-0 transition-all"
+              title="Open all bookmarks in this folder"
+            >
+              {openingAll ? 'Opening...' : 'Open All'}
+            </button>
           )}
           {!isCurrentDevice && node.children && node.children.length > 0 && (
             <button

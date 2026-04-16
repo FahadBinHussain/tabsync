@@ -145,15 +145,22 @@ export function DeviceSelection({ onDeviceSelected }: DeviceSelectionProps) {
     try {
       // REST returns plain Date objects; SDK returns Firestore Timestamps
       const date = ts instanceof Date ? ts : (ts.toDate ? ts.toDate() : new Date(ts));
+      const absoluteText = date.toLocaleString([], {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
       const diffMs = Date.now() - date.getTime();
       const m = Math.floor(diffMs / 60_000);
-      if (m < 1)  return 'Just now';
-      if (m < 60) return `${m}m ago`;
+      if (m < 1)  return `Just now (${absoluteText})`;
+      if (m < 60) return `${m}m ago (${absoluteText})`;
       const h = Math.floor(m / 60);
-      if (h < 24) return `${h}h ago`;
+      if (h < 24) return `${h}h ago (${absoluteText})`;
       const d = Math.floor(h / 24);
-      if (d < 7)  return `${d}d ago`;
-      return date.toLocaleDateString();
+      if (d < 7)  return `${d}d ago (${absoluteText})`;
+      return absoluteText;
     } catch { return 'Unknown'; }
   };
 

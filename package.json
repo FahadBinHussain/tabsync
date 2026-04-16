@@ -4,7 +4,8 @@
   "description": "Personal browser extension to sync open tabs across devices",
   "type": "module",
   "scripts": {
-    "build:test": "node scripts/build-test.js",
+    "build": "node scripts/build-test.js",
+    "build:legacy-test": "node scripts/build-test.js",
     "build:hello": "node scripts/build-hello.js",
     "build:tor": "node scripts/build-tor.js",
     "pack:all": "node scripts/pack.js",

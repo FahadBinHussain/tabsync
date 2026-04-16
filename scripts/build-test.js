@@ -1,16 +1,16 @@
 /**
  * scripts/build-test.js
  *
- * Quick local test build — both Chrome and Firefox, no signing, no version bump.
+ * Local build — both Chrome and Firefox, no signing, no version bump.
  *
  * Produces (4 files):
- *   build/tabsync-chrome-test.zip    — Chrome: load via chrome://extensions → Load unpacked
- *   build/tabsync-chrome-test.crx    — Chrome: sideload (requires key.pem)
- *   build/tabsync-firefox-test.zip   — Firefox source ZIP
- *   build/tabsync-firefox-test.xpi   — Firefox: load via about:debugging → Load Temporary Add-on
+ *   build/tabsync-chrome.zip         — Chrome: load via chrome://extensions → Load unpacked
+ *   build/tabsync-chrome.crx         — Chrome: sideload (requires key.pem)
+ *   build/tabsync-firefox.zip        — Firefox source ZIP
+ *   build/tabsync-firefox.xpi        — Firefox: load via about:debugging → Load Temporary Add-on
  *
  * Usage:
- *   pnpm build:test
+ *   pnpm build
  */
 
 import fs              from 'fs';
@@ -50,7 +50,7 @@ function createZip(srcDir, outPath) {
   });
 }
 
-console.log(`\n🔧  TabSync — local test build  (v${version}, unsigned)\n`);
+console.log(`\n🔧  TabSync — local build  (v${version}, unsigned)\n`);
 ensureDir(buildDir);
 
 // ─── TypeScript check ────────────────────────────────────────────────────────
@@ -64,8 +64,8 @@ console.log('\n�  [Chrome] Building…');
 run('pnpm exec vite build');
 
 const chromeDistDir = path.join(rootDir, 'dist-chrome');
-const chromeZip     = path.join(buildDir, 'tabsync-chrome-test.zip');
-const chromeCrx     = path.join(buildDir, 'tabsync-chrome-test.crx');
+const chromeZip     = path.join(buildDir, 'tabsync-chrome.zip');
+const chromeCrx     = path.join(buildDir, 'tabsync-chrome.crx');
 
 console.log('📦  [Chrome] Packaging ZIP…');
 await createZip(chromeDistDir, chromeZip);
@@ -117,8 +117,8 @@ for (const f of fs.readdirSync(srcIcons)) {
   fs.copyFileSync(path.join(srcIcons, f), path.join(dstIcons, f));
 }
 
-const firefoxZip = path.join(buildDir, 'tabsync-firefox-test.zip');
-const firefoxXpi = path.join(buildDir, 'tabsync-firefox-test.xpi');
+const firefoxZip = path.join(buildDir, 'tabsync-firefox.zip');
+const firefoxXpi = path.join(buildDir, 'tabsync-firefox.xpi');
 
 console.log('📦  [Firefox] Packaging ZIP…');
 await createZip(firefoxDistDir, firefoxZip);
@@ -133,10 +133,10 @@ console.log(`
 ✅  Done!  (v${version})
 
    Chrome:
-     build/tabsync-chrome-test.zip   → chrome://extensions → Load unpacked (extract first)
-     ${fs.existsSync(chromeCrx) ? 'build/tabsync-chrome-test.crx   → drag into chrome://extensions' : '(no CRX — key.pem not found)'}
+     build/tabsync-chrome.zip        → chrome://extensions → Load unpacked (extract first)
+     ${fs.existsSync(chromeCrx) ? 'build/tabsync-chrome.crx        → drag into chrome://extensions' : '(no CRX — key.pem not found)'}
 
    Firefox:
-     build/tabsync-firefox-test.xpi  → about:debugging → Load Temporary Add-on
-     build/tabsync-firefox-test.zip  → source ZIP
+     build/tabsync-firefox.xpi       → about:debugging → Load Temporary Add-on
+     build/tabsync-firefox.zip       → source ZIP
 `);
