@@ -35,7 +35,16 @@ jobs:
 
       # ── Chrome private key ────────────────────────────────────────────────
       - name: Restore Chrome private key
-        run: echo "${{ secrets.PEM_KEY }}" > key.pem
+        shell: bash
+        env:
+          TABSYNC_EXTENSION_PEM_B64: ${{ secrets.TABSYNC_EXTENSION_PEM_B64 }}
+        run: |
+          if [ -z "$TABSYNC_EXTENSION_PEM_B64" ]; then
+            echo "Missing GitHub secret: TABSYNC_EXTENSION_PEM_B64" >&2
+            exit 1
+          fi
+
+          printf '%s' "$TABSYNC_EXTENSION_PEM_B64" | base64 --decode > key.pem
 
       # ── Bump version + build + sign everything ────────────────────────────
       # pnpm bump increments patch, then runs pack:all which:
