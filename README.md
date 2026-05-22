@@ -267,3 +267,9 @@ MIT License - See LICENSE file for details
 ## Contributing
 
 This is a personal project, but feel free to fork and customize for your own use!
+
+## Contributors
+
+<a href="https://github.com/FahadBinHussain/tabsync/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=FahadBinHussain/tabsync" alt="Contributors" />
+</a>
