@@ -11,6 +11,33 @@ A personal, self-hosted browser extension to sync open tabs across devices (Chro
 - 🦊 **Cross-browser** support (Chrome, Firefox, Edge)
 - 💾 **Dynamic configuration** - provide your own Firebase config
 
+## Comparison
+
+`✅` means the tool is built around that capability. `partial` means it has a related feature, but
+not the same workflow or depth. `-` means it is not the point of that tool.
+
+| Capability | TabSync | [Workona](https://workona.com/) | [Tab Session Manager](https://chromewebstore.google.com/detail/tab-session-manager/iaiomicjabeggjcfkbimgmglanimpnae) | [Session Buddy](https://sessionbuddy.com/) | [OneTab](https://www.one-tab.com/) | Browser built-in sync |
+| --- | --- | --- | --- | --- | --- | --- |
+| Real-time open-tab sync across devices | ✅ | ✅ | partial | - | - | partial |
+| Self-hosted or bring-your-own backend | ✅ | - | partial | - | - | - |
+| No account required by the extension itself | ✅ | - | partial | ✅ | ✅ | partial |
+| Cross-browser Chrome/Firefox/Edge target | ✅ | ✅ | ✅ | partial | ✅ | browser-dependent |
+| Remote close/open commands | ✅ | partial | - | - | - | partial |
+| Session snapshots and restore history | - | ✅ | ✅ | ✅ | ✅ | partial |
+| Workspaces/projects/team sharing | - | ✅ | partial | - | - | partial |
+| Tab groups/window layout preservation | partial | ✅ | ✅ | ✅ | partial | partial |
+| Tor/proxy-friendly Cloudflare Worker path | ✅ | - | - | - | - | - |
+| Strong multi-user auth/security boundary | - | ✅ | partial | partial | partial | ✅ |
+
+Workona is the strongest full workspace product. Tab Session Manager, Session Buddy, and OneTab
+are stronger at saved sessions, backups, and restoring old tab sets. TabSync is intentionally
+smaller: it syncs the live state of open tabs through a backend you control, including remote
+commands and a proxy path for environments where direct Firestore access is blocked.
+
+The biggest current weakness is security and product polish. The README's sample Firestore rules
+are intentionally simple for a personal setup, but a public or shared deployment needs real auth,
+better history, conflict handling, and safer device enrollment.
+
 ## Tech Stack
 
 - **Frontend**: React + TypeScript + Vite
