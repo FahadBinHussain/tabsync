@@ -7,6 +7,7 @@ import {
   restListDocs,
   restSetDoc,
   restUpdateDoc,
+  restDeleteDoc,
   extractRestConfig,
   type FirestoreConfig,
 } from '../lib/firestoreRest';
@@ -46,6 +47,9 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
   const [renamingDeviceId, setRenamingDeviceId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSaving, setRenameSaving] = useState(false);
+
+  // Delete state
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   useEffect(() => {
     let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -231,6 +235,25 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
     }
   };
 
+  /**
+   * Delete a device from Firestore and local state.
+   */
+  const deleteDevice = async (deviceId: string) => {
+    if (!restCfg) return;
+    if (!confirm('Are you sure you want to delete this device? This will remove it from Firestore and all other synced devices.')) return;
+
+    setDeleteSaving(true);
+    try {
+      await restDeleteDoc(restCfg, `devices/${deviceId}`);
+      setDevices(prev => prev.filter(d => d.id !== deviceId));
+      console.log(`[TabSync] Deleted device ${deviceId}`);
+    } catch (err) {
+      console.error('[TabSync] Failed to delete device:', err);
+    } finally {
+      setDeleteSaving(false);
+    }
+  };
+
   const formatTimestamp = (timestamp: any): string => {
     if (!timestamp) return 'Unknown';
     
@@ -407,6 +430,21 @@ export function DeviceList({ onResetConfig, onReselectDevice }: DeviceListProps)
                                 <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                     d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H8v-2.414a2 2 0 01.586-1.414z" />
+                                </svg>
+                              </button>
+                              {/* Trash delete button — visible on device card hover */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteDevice(device.id);
+                                }}
+                                disabled={deleteSaving}
+                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-600 rounded transition-all disabled:opacity-50"
+                                title="Delete this device"
+                              >
+                                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                 </svg>
                               </button>
                             </>
