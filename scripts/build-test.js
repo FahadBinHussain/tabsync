@@ -60,7 +60,7 @@ run('pnpm exec tsc --noEmit');
 // ─────────────────────────────────────────────────────────────────────────────
 // CHROME
 // ─────────────────────────────────────────────────────────────────────────────
-console.log('\n�  [Chrome] Building…');
+console.log('\n🔧  [Chrome] Building…');
 run('pnpm exec vite build');
 
 const chromeDistDir = path.join(rootDir, 'dist-chrome');
