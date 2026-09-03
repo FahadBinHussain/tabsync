@@ -342,6 +342,21 @@ browser.storage.onChanged.addListener((changes: any, areaName: string) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Dev self-reload (tools/reload-extension.ps1 -> public/reload.html):
+// Extensions Reloader never re-reads manifest.json, so manifest bumps go
+// through browser.runtime.reload() here - the real disk re-load. the sender
+// tab is blanked first so no extension page survives the reload.
+browser.runtime.onMessage.addListener((msg: any, sender: any) => {
+  if (!msg || msg.type !== 'selfReload') return;
+  (async () => {
+    try {
+      if (sender?.tab?.id !== undefined) await browser.tabs.update(sender.tab.id, { url: 'about:blank' });
+    } catch {}
+    browser.runtime.reload();
+  })();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 initialize();
 console.log('[TabSync] Background script loaded');
 
