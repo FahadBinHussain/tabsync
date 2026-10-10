@@ -1,20 +1,160 @@
-# TabSync
+<p align="center">
+  <img src="public/icons/icon-128.png" width="104" alt="TabSync logo">
+</p>
 
-A personal, self-hosted browser extension to sync open tabs across devices (Chromium & Firefox).
+<h1 align="center">TabSync</h1>
 
-## Features
+<p align="center">
+  sync open tabs across your devices — self-hosted, no accounts<br>
+  <b>chromium + firefox extension</b> · <b>your own firestore</b> · <b>remote tab control</b>
+</p>
 
-- 🔄 **Real-time sync** of open tabs across all your devices
-- 🔥 **Firebase Firestore** backend (self-hosted)
-- 🚫 **No authentication** required - single tenant architecture
-- 🌙 **Dark mode** UI with Tailwind CSS
-- 🦊 **Cross-browser** support (Chrome, Firefox, Edge)
-- 💾 **Dynamic configuration** - provide your own Firebase config
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/FahadBinHussain/tabsync" alt="MIT license"></a>
+  <a href="https://github.com/FahadBinHussain/tabsync/releases/latest"><img src="https://img.shields.io/github/v/release/FahadBinHussain/tabsync?label=extension" alt="latest release"></a>
+  <a href="https://github.com/FahadBinHussain/tabsync/actions/workflows/build-release.yml"><img src="https://github.com/FahadBinHussain/tabsync/actions/workflows/build-release.yml/badge.svg" alt="build &amp; release workflow"></a>
+  <img src="https://img.shields.io/badge/react%20+%20typescript-3178C6" alt="react + typescript">
+  <img src="https://img.shields.io/badge/build-vite%20+%20crxjs-646CFF" alt="vite + crxjs">
+  <img src="https://img.shields.io/badge/backend-own%20firestore-FFCA28" alt="own firestore backend">
+  <a href="https://tbsync.vercel.app"><img src="https://img.shields.io/badge/live-tbsync.vercel.app-0cf9ad" alt="live site"></a>
+</p>
 
-## Comparison
+<table align="center">
+  <tr>
+    <td align="center" width="33%"><b>🔄 live tab sync</b><br>every tab change is written to<br>your backend, debounced 2s</td>
+    <td align="center" width="33%"><b>📱 multi-device</b><br>name each device, see all their<br>open tabs, open all at once</td>
+    <td align="center" width="33%"><b>🖱️ remote control</b><br>close or open a tab on another<br>device from the popup</td>
+  </tr>
+  <tr>
+    <td align="center"><b>📚 bookmark sync</b><br>full bookmark tree follows you,<br>open a folder or import it locally</td>
+    <td align="center"><b>🔌 your own firestore</b><br>bring your firebase config,<br>no auth, single-tenant by design</td>
+    <td align="center"><b>🧅 tor + proxy</b><br>route firestore through your own<br>cloudflare worker when blocked</td>
+  </tr>
+</table>
 
-`✅` means the tool is built around that capability. `partial` means it has a related feature, but
-not the same workflow or depth. `-` means it is not the point of that tool.
+## how it works
+
+```mermaid
+flowchart LR
+    A["chromium<br/>mv3 service worker"] -->|"firestore REST"| C[(your firestore)]
+    B["firefox<br/>mv2 background script"] -->|"firestore REST"| C
+    A -.optional proxy.- W["cloudflare worker"]
+    B -.optional proxy.- W
+    W --> C
+```
+
+one popup UI, built twice per release: manifest v3 for chromium, manifest v2 for
+firefox, sharing the same react + typescript source through
+`webextension-polyfill`. the background script watches tab create/update/remove,
+debounces 2 seconds, and writes the whole tab list to `devices/{deviceId}`. the
+popup listens live, so a laptop's tabs appear on the desktop while you watch.
+
+remote actions use a small command pattern: a doc written to
+`devices/{otherDevice}/commands/{id}` (`closeTab`, `openTab`, `addBookmark`),
+which the owning device polls, claims atomically, executes, then deletes.
+
+### firestore schema
+
+```
+devices/
+  {deviceId}/
+    deviceName: string
+    lastUpdated: timestamp
+    tabCount: number
+    tabs: [ { id, url, title, favIconUrl, windowId, index, active, pinned } ]
+    bookmarks: [ ...full bookmark tree... ]
+    commands/            (subcollection)
+      {commandId}/
+        action: "closeTab" | "openTab" | "addBookmark"
+        fromDevice: string
+        createdAt: timestamp
+```
+
+## quick start
+
+### 1. grab a build
+
+either download the latest files from
+[releases](https://github.com/FahadBinHussain/tabsync/releases/latest)
+(`tabsync-chrome-v<version>.zip` / `.crx`, `tabsync-firefox-v<version>.zip` /
+`.xpi`), or build from source:
+
+```bash
+pnpm install
+pnpm build      # local, unsigned: build/tabsync-chrome.zip + tabsync-firefox.xpi
+```
+
+### 2. load it
+
+- **chrome / edge / brave**: `chrome://extensions` → developer mode →
+  **load unpacked** → extract the chrome zip and pick it (or point at `dist-chrome/`)
+- **firefox**: `about:debugging#/runtime/this-firefox` → **load temporary
+  add-on** → pick the `.xpi` (or any file in `dist-firefox/`). the release xpi
+  is signed by mozilla, so it installs permanently.
+
+### 3. point it at your own firestore
+
+1. make a firebase project, enable **firestore** (no auth needed)
+2. copy the `firebaseConfig` object from project settings
+3. click the extension icon → paste the config → save
+4. **create new device**, give it a name like `work-laptop`
+
+that's the whole setup. every device you paste the same config into joins the
+same sync group.
+
+## usage
+
+- the popup lists every synced device with its live tabs — click a device to
+  expand it
+- click any tab from another device to open it locally; **open all** opens the
+  whole set
+- hover a remote tab for the **×** button — that closes the tab *on the other
+  device*, via the command pattern above
+- the **bookmarks** tab shows the synced tree: open a folder's tabs, or import
+  the folder into this device's bookmarks
+- **reset configuration** wipes the local config and returns to first-run
+
+## security rules
+
+single-tenant and deliberately simple — this is for a personal firebase project,
+not a shared one:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /devices/{deviceId} {
+      allow read, write: if true;
+
+      match /commands/{commandId} {
+        allow read, write: if true;
+      }
+    }
+  }
+}
+```
+
+⚠️ anyone holding your firebase config can read and treat this as their own.
+that's the trade of "no auth". only use a project nobody else knows about, and
+see below if you're on tor.
+
+## tor / proxy
+
+google blocks tor exit nodes from reaching `firestore.googleapis.com`. the
+popup has an optional **proxy url** field: deploy
+[`scripts/cf-worker.js`](scripts/cf-worker.js) to cloudflare workers (free
+tier), store your firebase api key as a worker secret, and paste the worker
+url. every firestore request then goes through your worker, which injects the
+key server-side — your config never crosses tor.
+
+```bash
+wrangler deploy scripts/cf-worker.js --name tabsync-proxy --compatibility-date 2024-01-01
+wrangler secret put FIREBASE_API_KEY
+```
+
+the popup auto-detects tor and warns if no proxy is set.
+
+## comparison
 
 | Capability | TabSync | [Workona](https://workona.com/) | [Tab Session Manager](https://chromewebstore.google.com/detail/tab-session-manager/iaiomicjabeggjcfkbimgmglanimpnae) | [Session Buddy](https://sessionbuddy.com/) | [OneTab](https://www.one-tab.com/) | Browser built-in sync |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -29,274 +169,53 @@ not the same workflow or depth. `-` means it is not the point of that tool.
 | Tor/proxy-friendly Cloudflare Worker path | ✅ | - | - | - | - | - |
 | Strong multi-user auth/security boundary | - | ✅ | partial | partial | partial | ✅ |
 
-Workona is the strongest full workspace product. Tab Session Manager, Session Buddy, and OneTab
-are stronger at saved sessions, backups, and restoring old tab sets. TabSync is intentionally
-smaller: it syncs the live state of open tabs through a backend you control, including remote
-commands and a proxy path for environments where direct Firestore access is blocked.
+workona is the strongest full workspace product, and tab session manager /
+session buddy / onetab are stronger at saved sessions and restore history.
+tabsync is intentionally smaller: it mirrors the *live* state of open tabs
+through a backend you control, with remote commands and a proxy path for
+environments where direct firestore access is blocked.
 
-The biggest current weakness is security and product polish. The README's sample Firestore rules
-are intentionally simple for a personal setup, but a public or shared deployment needs real auth,
-better history, conflict handling, and safer device enrollment.
+the honest weakness is security and polish — the sample rules above are for a
+personal setup, and a shared deployment would need real auth, conflict
+handling, and safer device enrollment.
 
-## Tech Stack
+## repo layout
 
-- **Frontend**: React + TypeScript + Vite
-- **Build Tool**: CRXJS (Vite plugin for extensions)
-- **Styling**: Tailwind CSS
-- **Backend**: Firebase Firestore (no Auth)
-- **Cross-Browser**: webextension-polyfill
+| path | what |
+| --- | --- |
+| `src/` | shared react + typescript extension source (popup, background, libs) |
+| `scripts/` | build/pack/bump helpers + `cf-worker.js` proxy |
+| `.github/workflows/` | build & release: bump, sign, publish on every push |
+| `tor-android/` | standalone popup build for tor browser on android |
+| `hello-world/` | dev sandbox for build experiments — not the product |
 
-## Setup
+the project site lives at [tbsync.vercel.app](https://tbsync.vercel.app).
 
-### 1. Install Dependencies
+## development
 
 ```bash
 pnpm install
+pnpm exec vite build                     # chromium dist-chrome/
+pwsh tools/reload-extension.ps1          # rebuild + reload the extension
+pnpm build                               # local unsigned build, both browsers
+pnpm pack:all                            # versioned artifacts (+ signed xpi if AMO creds set)
+pnpm bump                                # patch bump + full pack
 ```
 
-### 2. Create Extension Icons
+version lives in `package.json` — bump it in the same change as any extension
+change.
 
-Place the following icon files in `src/assets/`:
-- `icon-16.png` (16x16)
-- `icon-32.png` (32x32)
-- `icon-48.png` (48x48)
-- `icon-128.png` (128x128)
+every push to `main` runs `build-release.yml`: it bumps the patch version,
+builds chrome (zip + crx, signed with the repo's key) and firefox (zip +
+mozilla-signed xpi via AMO), commits the bump back, and publishes everything to
+a rolling `latest` release. that's what the badge up top reports.
 
-### 3. Setup Firebase
-
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Create a new project (or use existing)
-3. Enable **Firestore Database**
-4. Go to Project Settings → General
-5. Scroll to "Your apps" and copy the `firebaseConfig` object
-6. You'll paste this into the extension on first run
-
-### 4. Build the Extension
-
-**For Chrome/Edge (with packaging):**
-```bash
-pnpm build:chrome
-```
-This creates a ZIP file in the `build/` folder.
-
-**For Firefox (with packaging):**
-```bash
-pnpm build:firefox
-```
-This creates an XPI file in the `build/` folder.
-
-**Development build (no packaging):**
-```bash
-pnpm build
-```
-
-### 5. Load the Extension
-
-**Chrome/Edge (Development):**
-1. Go to `chrome://extensions/`
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select the `dist` folder
-
-**Chrome/Edge (Packaged CRX):**
-1. Go to `chrome://extensions/`
-2. Enable "Developer mode"
-3. Click "Pack extension"
-4. Select the `dist` folder as the extension root
-5. Chrome will generate a `.crx` file and a `.pem` key
-6. Drag the `.crx` file into the extensions page
-
-**Firefox (Development):**
-1. Go to `about:debugging#/runtime/this-firefox`
-2. Click "Load Temporary Add-on"
-3. Select any file in the `dist` folder
-
-**Firefox (Packaged XPI):**
-1. The XPI file from `build/` can be installed temporarily
-2. For permanent installation, sign it at [addons.mozilla.org](https://addons.mozilla.org/developers/)
-
-## Usage
-
-### First Run Setup
-
-**Step 1: Enter Firebase Configuration**
-1. Click the extension icon
-2. You'll see a configuration form
-3. Paste your Firebase config JSON
-4. Click "Save Configuration"
-
-**Step 2: Select or Create Device**
-- **If you have existing devices:**
-  - You'll see a list of all devices currently synced
-  - Click on any device to sync with it (merges your current tabs with that device)
-  - Or click "Create New Device" to add this as a new device
-  
-- **If this is your first device:**
-  - Click "Create New Device"
-  - Enter a descriptive name (e.g., "Work Laptop", "Home Desktop")
-  - Click "Create Device"
-
-### Normal Usage
-
-- The extension automatically syncs your tabs every 2 seconds (debounced)
-- Click the extension icon to see all synced devices
-- Click on a device to expand and see its tabs
-- Click any tab to open it
-- Click "Open All" to open all tabs from another device
-- **Hover over a tab** from another device to see the close button (×) - click to close that tab remotely!
-
-### Remote Tab Control (Command Pattern)
-
-TabSync implements a command pattern for remote operations:
-- When you click the "×" button on a tab from Device A (while viewing from Device B), Device B writes a command to Firestore
-- The command is stored in: `devices/DeviceA/commands/{commandId}`
-- Device A's background script listens to its commands subcollection
-- When Device A receives the command, it executes the action (closes the tab) and deletes the command document
-
-### Managing Configuration
-
-If you need to change your Firebase config or switch devices:
-1. Open the extension popup
-2. Click "Reset Config"
-3. Confirm the reset
-4. You'll be taken back to the configuration screen
-5. Follow the first-run setup again
-
-## Architecture
-
-### Background Script (`src/background/index.ts`)
-
-- Waits for Firebase config to be available in storage
-- Watches for tab changes (create, update, remove, move)
-- Debounces writes to Firestore (2 seconds)
-- Writes to: `devices/{deviceId}`
-- Listens to `devices/{deviceId}/commands` for remote commands
-- Executes commands (close tab, open tab) and marks them as done
-
-### Popup (`src/popup/`)
-
-- **ConfigForm**: Shows on first run to collect Firebase config
-- **DeviceList**: Shows all synced devices and their tabs
-- Real-time listener to Firestore for device updates
-
-### Firestore Schema
-
-```
-devices/
-  {deviceId}/
-    deviceName: string
-    lastUpdated: timestamp
-    tabCount: number
-    tabs: [
-      {
-        id: number
-        url: string
-        title: string
-        favIconUrl: string
-        windowId: number
-        index: number
-        active: boolean
-        pinned: boolean
-      }
-    ]
-    commands/ (subcollection)
-      {commandId}/
-        action: "closeTab" | "openTab"
-        tabId: number (for closeTab)
-        url: string (for openTab)
-        createdAt: timestamp
-        fromDevice: string
-```
-
-## Development
-
-```bash
-# Install dependencies
-pnpm install
-
-# Development mode (hot reload)
-pnpm dev
-
-# Build for production (Chrome/Edge)
-pnpm build
-
-# Build for production (Firefox)
-set TARGET=firefox
-pnpm build
-
-# Build and package for Chrome
-pnpm build:chrome
-
-# Build and package for Firefox
-pnpm build:firefox
-```
-
-## Firestore Security Rules
-
-Since this is self-hosted and single-tenant, you can use simple rules:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /devices/{deviceId} {
-      allow read, write: if true;
-      
-      match /commands/{commandId} {
-        allow read, write: if true;
-      }
-    }
-  }
-}
-```
-
-⚠️ **Warning**: These rules allow anyone with your Firebase config to read/write. Only share your config with trusted devices.
-
-## Tor Browser / Proxy Support
-
-Google blocks Tor exit node IPs from accessing `firestore.googleapis.com` directly.  
-To use TabSync in Tor Browser, deploy the included Cloudflare Worker as a proxy.
-
-### Deploy the Cloudflare Worker (5 minutes, free)
-
-**Prerequisites:** [Cloudflare account](https://dash.cloudflare.com/) (free tier is fine) + [wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
-
-```bash
-pnpm install -g wrangler
-wrangler login
-```
-
-**1. Create the worker**
-
-```bash
-wrangler deploy scripts/cf-worker.js --name tabsync-proxy --compatibility-date 2024-01-01
-```
-
-**2. Set your Firebase API key as a secret** (never stored in code)
-
-```bash
-wrangler secret put FIREBASE_API_KEY
-# paste your Firebase API key when prompted
-```
-
-**3. Configure TabSync**
-
-In the TabSync setup form, paste the worker URL into the **"Proxy URL"** field, e.g.:  
-`https://tabsync-proxy.yourname.workers.dev`
-
-All Firestore requests route through your worker instead of hitting Google directly.
-The worker injects the `FIREBASE_API_KEY` secret server-side, so your key is never sent over Tor.
-
-## License
-
-MIT License - See LICENSE file for details
-
-## Contributing
-
-This is a personal project, but feel free to fork and customize for your own use!
-
-## Contributors
+## contributors
 
 <a href="https://github.com/FahadBinHussain/tabsync/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=FahadBinHussain/tabsync" alt="Contributors" />
 </a>
+
+## license
+
+[MIT](LICENSE)
